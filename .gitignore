@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+.coverage
+.coverage.*
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+htmlcov/
+
+# Build artifacts
+build/
+dist/
+*.whl
+
+# uv / virtualenv
+.venv/
+venv/
+env/
+
+# Node / future frontend
+node_modules/
+.next/
+.vite/
+dist-electron/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local secrets
+.env
+.env.local
+*.local
+
+# Claude Code session traces (private to dev machine)
+.claude/projects/
+
+# Workspace data (LLM-Wiki content lives on user's disk, not in repo)
+workspaces/
+*.workspace/

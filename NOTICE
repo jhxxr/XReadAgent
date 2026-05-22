@@ -1,0 +1,38 @@
+XReadAgent — Third-Party Notices
+================================
+
+XReadAgent is licensed under the GNU Affero General Public License v3.0 or
+later (AGPL-3.0-or-later). See LICENSE for the full text.
+
+The following third-party components are planned for inclusion as the project
+matures. Each entry will be filled in with version, upstream URL, and license
+text reference when the dependency is actually wired up.
+
+Currently bundled runtime dependencies (Phase 0 skeleton)
+---------------------------------------------------------
+
+- FastAPI                — MIT License
+- uvicorn                — BSD 3-Clause License
+- starlette              — BSD 3-Clause License
+- pydantic               — MIT License
+- httpx                  — BSD 3-Clause License
+- websockets             — BSD 3-Clause License
+- python-multipart       — Apache License 2.0
+
+Planned dependencies (added in later phases)
+--------------------------------------------
+
+- MinerU (PDF parser)             — MinerU OSS License (Apache-derived); added in Phase 1.
+- markitdown (Office/HTML→md)     — MIT License; added in Phase 1.
+- BabelDOC (layout translation)   — AGPL-3.0-or-later; added in Phase 2.
+- DocLayout-YOLO ONNX weights     — see BabelDOC asset bundle license; added in Phase 2.
+- deepagents (agent harness)      — MIT License; added in Phase 1.
+- LangChain / LangGraph           — MIT License; added in Phase 1.
+- pydantic-ai                     — MIT License; added in Phase 1.
+- GROBID (optional, Docker side-car) — Apache License 2.0; added in Phase 3.
+- sqlite-vec (optional Tier-2 index) — MIT License; added in Phase 4.
+
+Per the AGPL-3.0 network clause: when XReadAgent (or any future hosted
+deployment) is operated as a network service, the corresponding source code
+must be offered to users interacting with it. See section 13 of the LICENSE
+file for the precise terms.
