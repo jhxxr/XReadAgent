@@ -8,8 +8,8 @@ The following third-party components are planned for inclusion as the project
 matures. Each entry will be filled in with version, upstream URL, and license
 text reference when the dependency is actually wired up.
 
-Currently bundled runtime dependencies (Phase 0 skeleton)
----------------------------------------------------------
+Currently bundled runtime dependencies (Phase 1A)
+-------------------------------------------------
 
 - FastAPI                — MIT License
 - uvicorn                — BSD 3-Clause License
@@ -18,17 +18,24 @@ Currently bundled runtime dependencies (Phase 0 skeleton)
 - httpx                  — BSD 3-Clause License
 - websockets             — BSD 3-Clause License
 - python-multipart       — Apache License 2.0
+- PyYAML                 — MIT License
+- markitdown             — MIT License (Microsoft); Office / HTML / EPUB → markdown.
+- deepagents             — MIT License (LangChain AI); agent harness with virtual-FS middleware.
+- LangChain              — MIT License (LangChain AI); LLM orchestration core.
+- LangGraph              — MIT License (LangChain AI); pulled in transitively by deepagents.
+- langchain-openai       — MIT License; OpenAI-compatible chat model adapter.
+- langchain-anthropic    — MIT License; Anthropic chat model adapter.
+
+MinerU is NOT a Python runtime dependency — XReadAgent invokes the optional
+``mineru`` CLI as a subprocess only when the user has installed it locally.
 
 Planned dependencies (added in later phases)
 --------------------------------------------
 
-- MinerU (PDF parser)             — MinerU OSS License (Apache-derived); added in Phase 1.
-- markitdown (Office/HTML→md)     — MIT License; added in Phase 1.
+- MinerU (PDF parser, CLI subprocess) — MinerU OSS License (Apache-derived); installed by user out-of-band; wired in Phase 1A.
 - BabelDOC (layout translation)   — AGPL-3.0-or-later; added in Phase 2.
 - DocLayout-YOLO ONNX weights     — see BabelDOC asset bundle license; added in Phase 2.
-- deepagents (agent harness)      — MIT License; added in Phase 1.
-- LangChain / LangGraph           — MIT License; added in Phase 1.
-- pydantic-ai                     — MIT License; added in Phase 1.
+- pydantic-ai                     — MIT License; added in Phase 2.
 - GROBID (optional, Docker side-car) — Apache License 2.0; added in Phase 3.
 - sqlite-vec (optional Tier-2 index) — MIT License; added in Phase 4.
 

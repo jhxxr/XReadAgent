@@ -21,6 +21,16 @@ dependencies = [
     "httpx>=0.27",
     "websockets>=13",
     "python-multipart>=0.0.12",
+    "markitdown[pdf,docx,pptx,xlsx]>=0.1.5",
+    "pyyaml>=6.0",
+    # Agent harness — deepagents brings langchain + langgraph + langchain-anthropic.
+    # Pinned to 0.x because the SDK has not yet declared 1.0 API stability; bump on
+    # the deepagents 1.0 release. langchain-openai is added explicitly because
+    # deepagents only pulls in Anthropic / Gemini by default.
+    "deepagents>=0.6,<1.0",
+    "langchain>=1.0,<2.0",
+    "langchain-openai>=1.0,<2.0",
+    "langchain-anthropic>=1.0,<2.0",
 ]
 
 [project.optional-dependencies]
@@ -29,6 +39,7 @@ dev = [
     "mypy>=1.11",
     "pytest>=8",
     "pytest-asyncio>=0.24",
+    "types-pyyaml>=6.0",
 ]
 
 [build-system]
@@ -37,6 +48,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["backend/src/xreadagent"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"backend/src/xreadagent/agents/prompts" = "xreadagent/agents/prompts"
 
 [tool.hatch.build.targets.sdist]
 include = ["backend/src", "README.md", "LICENSE", "NOTICE", "pyproject.toml"]
@@ -49,6 +63,7 @@ dev = [
     "mypy>=1.11",
     "pytest>=8",
     "pytest-asyncio>=0.24",
+    "types-pyyaml>=6.0",
 ]
 
 [tool.ruff]
@@ -71,10 +86,34 @@ explicit_package_bases = true
 module = ["xreadagent.*"]
 disallow_untyped_decorators = false
 
+[[tool.mypy.overrides]]
+module = ["markitdown", "markitdown.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "deepagents",
+    "deepagents.*",
+    "langchain",
+    "langchain.*",
+    "langchain_anthropic",
+    "langchain_anthropic.*",
+    "langchain_core",
+    "langchain_core.*",
+    "langchain_openai",
+    "langchain_openai.*",
+    "langgraph",
+    "langgraph.*",
+]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
 pythonpath = ["backend/src"]
 asyncio_mode = "auto"
 filterwarnings = [
     "ignore::DeprecationWarning",
+]
+markers = [
+    "mineru: requires the MinerU CLI installed (skipped by default)",
 ]
