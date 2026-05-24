@@ -10,32 +10,56 @@ Architecturally the LLM gateway in ``xreadagent.llm`` stays framework-agnostic
 (plain ``httpx`` chat). This module is the one place LangChain types are
 allowed to leak into the codebase — anything else routes via ``apply_plan``
 on plain Pydantic.
+
+Apply discipline (post-planner, pre-write):
+
+- Empty ``ConceptFrontmatter.type`` is defaulted to ``"concept"`` because the
+  LLM is asked for the *aliases / canonical name* of a concept, not its
+  ontology slot.
+- Per-source distillation entities / claims / relations / tasks get their
+  infrastructure metadata (``workspaceId``, ``createdAt``, ``updatedAt``,
+  ``origin``, ``status``) populated here so the LLM is never asked for facts
+  it cannot know.
+- Claims with ``entityIds`` that map to concept slugs are reverse-projected
+  into the ``## Related Claims`` section of the matching concept page,
+  closing the loop the LLM otherwise leaves open.
 """
 
 from __future__ import annotations
 
+import sys
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
+
+from pydantic import ValidationError
 
 from xreadagent.agents._merge import merge_concept_into_page
 from xreadagent.agents.ingest_schema import IngestPlan
+from xreadagent.agents.json_planner import (
+    is_nested_list_string_error,
+    make_json_planner,
+)
 from xreadagent.agents.tools import build_ingest_tools
-from xreadagent.schemas.entities import SourceRef
+from xreadagent.schemas.entities import Claim, SourceRef
 from xreadagent.schemas.sources import Source
 from xreadagent.schemas.wiki_pages import ConceptFrontmatter
 from xreadagent.wiki.distillation import DistillationPayload, save_distillation
 from xreadagent.wiki.index_regen import write_index
 from xreadagent.wiki.log import WikiConversationLog, WikiLog
 from xreadagent.wiki.pages import (
+    CONCEPT_SECTIONS,
     PAPER_SECTIONS,
     read_page_frontmatter,
     write_concept_page,
     write_paper_page,
 )
 from xreadagent.wiki.workspace import Workspace
+
+PlannerMethod = Literal["auto", "tool", "json"]
 
 
 def _load_system_prompt() -> str:
@@ -100,6 +124,7 @@ def apply_plan(workspace: Workspace, plan: IngestPlan, source: Source) -> list[s
     )
     touched.append(_relative(paper_path, workspace))
 
+    concept_slugs: set[str] = set()
     for concept in plan.concepts:
         if concept.op == "merge":
             concept_path = merge_concept_into_page(
@@ -122,9 +147,13 @@ def apply_plan(workspace: Workspace, plan: IngestPlan, source: Source) -> list[s
             concept_path = write_concept_page(
                 workspace,
                 concept.slug,
+                # ``type`` defaults to "concept" when the LLM left it blank —
+                # the field is metadata about *which kind* of concept page,
+                # not something we should bother the LLM about for v1.
                 ConceptFrontmatter(
                     title=concept.canonical_name,
                     aliases=concept.aliases,
+                    type="concept",
                 ),
                 {
                     "Summary": concept.summary_section,
@@ -134,6 +163,7 @@ def apply_plan(workspace: Workspace, plan: IngestPlan, source: Source) -> list[s
                 },
             )
         touched.append(_relative(concept_path, workspace))
+        concept_slugs.add(concept.slug)
 
     # Per-source distillation JSON — fold in source-side back-pointer so the
     # JSON is self-contained (audit + recompile contract).
@@ -143,8 +173,20 @@ def apply_plan(workspace: Workspace, plan: IngestPlan, source: Source) -> list[s
     # If the LLM left ``sourceRefs`` empty on any entity/claim/etc., fill in a
     # back-pointer to the canonical source id before we persist.
     _ensure_source_refs(distillation, source.id)
+    _inject_infrastructure_metadata(distillation, source=source, workspace=workspace)
     save_distillation(workspace, plan.paper.slug, distillation)
     touched.append(f"state/by-source/{plan.paper.slug}.json")
+
+    # Reverse-project claims into the concept pages they reference. Done after
+    # both concept pages and the distillation JSON are written so the entity
+    # ↔ concept mapping is stable.
+    _reverse_project_claims_into_concepts(
+        workspace,
+        plan=plan,
+        distillation=distillation,
+        concept_slugs=concept_slugs,
+        source_slug=plan.paper.slug,
+    )
 
     # Regenerate the index from current papers + concepts on disk.
     if write_index(workspace):
@@ -185,6 +227,203 @@ def _ensure_source_refs(payload: DistillationPayload, source_id: str) -> None:
                 item.sourceRefs = [SourceRef(sourceId=cleaned_id)]
 
 
+def _utc_now_iso() -> str:
+    """Return ``YYYY-MM-DDTHH:MM:SSZ`` (UTC, second-precision) per spec rules."""
+    return datetime.now(tz=timezone.utc).isoformat(timespec="seconds").replace(
+        "+00:00", "Z"
+    )
+
+
+def _inject_infrastructure_metadata(
+    payload: DistillationPayload,
+    *,
+    source: Source,
+    workspace: Workspace,
+) -> None:
+    """Fill the infra-only fields the LLM has no business knowing.
+
+    ``workspaceId``, ``createdAt``, ``updatedAt`` get populated everywhere they
+    are missing. ``origin`` defaults to ``ingest:{source.id}`` and ``status``
+    defaults to ``"active"`` — both are skipped on Relation entries that
+    already carry them (Relation has no ``status`` field meaningful at this
+    layer; we still default to ``"active"`` for symmetry).
+
+    The LLM-provided values are preserved when present so a future smarter
+    planner can override these defaults.
+    """
+    now = _utc_now_iso()
+    # We use the workspace root's directory name as a stable workspace id when
+    # nothing better is available — same convention as the Go workspace_id.
+    workspace_id = workspace.root.name or "workspace"
+    origin = f"ingest:{source.id}" if source.id.strip() else "ingest"
+    for collection in (
+        payload.entities,
+        payload.claims,
+        payload.relations,
+        payload.tasks,
+    ):
+        for item in collection:
+            if not item.workspaceId:
+                item.workspaceId = workspace_id
+            if not item.createdAt:
+                item.createdAt = now
+            if not item.updatedAt:
+                item.updatedAt = now
+            if not item.origin:
+                item.origin = origin
+            if not item.status:
+                item.status = "active"
+
+
+def _reverse_project_claims_into_concepts(
+    workspace: Workspace,
+    *,
+    plan: IngestPlan,
+    distillation: DistillationPayload,
+    concept_slugs: set[str],
+    source_slug: str,
+) -> None:
+    """Walk ``distillation.claims`` and append each to its concepts' Related Claims.
+
+    A claim references entities by ``entityIds``. An entity *is* a concept
+    when one of these holds:
+      - The entity's ``id`` matches a written concept slug verbatim.
+      - The entity's ``id`` starts with the concept slug (handles the common
+        ``ent-{slug}`` prefix the prompt suggests).
+      - The entity's ``aliases`` include the concept slug.
+
+    For each match we append a deduped bullet to that concept page's
+    ``## Related Claims`` section. Missing concept pages or unmatched entity
+    ids are silently skipped — this is best-effort enrichment, not a hard
+    contract.
+    """
+    if not plan.distillation.claims:
+        return
+
+    entity_index = _build_entity_to_concept_index(distillation, concept_slugs)
+
+    # Group claim bullets per concept slug so each page is only rewritten once.
+    bullets_per_concept: dict[str, list[str]] = {}
+    for claim in distillation.claims:
+        targets: set[str] = set()
+        for entity_id in claim.entityIds:
+            slug = entity_index.get(entity_id)
+            if slug is not None:
+                targets.add(slug)
+        if not targets:
+            continue
+        bullet = _format_claim_bullet(claim, source_slug)
+        for slug in targets:
+            bullets_per_concept.setdefault(slug, []).append(bullet)
+
+    for slug, bullets in bullets_per_concept.items():
+        _append_related_claim_to_concept(workspace, slug, bullets)
+
+
+def _build_entity_to_concept_index(
+    distillation: DistillationPayload, concept_slugs: set[str]
+) -> dict[str, str]:
+    """Return ``{entity_id: concept_slug}`` mapping for entities that ARE concepts."""
+    mapping: dict[str, str] = {}
+    for entity in distillation.entities:
+        target: str | None = None
+        if entity.id in concept_slugs:
+            target = entity.id
+        else:
+            for slug in concept_slugs:
+                if not slug:
+                    continue
+                if entity.id.endswith(slug) or slug in entity.aliases:
+                    target = slug
+                    break
+        if target is not None:
+            mapping[entity.id] = target
+    return mapping
+
+
+def _format_claim_bullet(claim: Claim, source_slug: str) -> str:
+    title = claim.title.strip() or claim.summary.strip() or claim.id
+    return f"- [{claim.id}] {title} ({source_slug})"
+
+
+def _append_related_claim_to_concept(
+    workspace: Workspace, concept_slug: str, bullets: list[str]
+) -> None:
+    """Append claim bullets to ``concepts/{slug}.md``'s Related Claims section.
+
+    Reads the existing page, splits into sections, replaces the body of
+    ``## Related Claims`` with the deduped union of old bullets + new
+    bullets, and re-writes the page atomically via ``write_concept_page``
+    (which preserves the section skeleton).
+    """
+    page_path = workspace.concepts_dir / f"{concept_slug}.md"
+    if not page_path.exists():
+        return
+
+    body = page_path.read_text(encoding="utf-8")
+    sections = _split_concept_sections(body)
+    fm = read_page_frontmatter(page_path)
+
+    existing_block = sections.get("Related Claims", "").strip()
+    if existing_block == "_(not yet filled)_":
+        existing_block = ""
+    existing_lines = [
+        line.strip() for line in existing_block.splitlines() if line.strip()
+    ]
+    seen = set(existing_lines)
+    merged_lines = list(existing_lines)
+    for bullet in bullets:
+        if bullet not in seen:
+            merged_lines.append(bullet)
+            seen.add(bullet)
+    sections["Related Claims"] = "\n".join(merged_lines)
+
+    title_raw = fm.get("title", concept_slug) if isinstance(fm, dict) else concept_slug
+    aliases_raw = fm.get("aliases", []) if isinstance(fm, dict) else []
+    type_raw = fm.get("type", "concept") if isinstance(fm, dict) else "concept"
+    title = str(title_raw or concept_slug)
+    aliases = [str(a) for a in aliases_raw] if isinstance(aliases_raw, list) else []
+    type_value = str(type_raw or "concept")
+    frontmatter = ConceptFrontmatter(title=title, aliases=aliases, type=type_value)
+    write_concept_page(workspace, concept_slug, frontmatter, sections)
+
+
+def _split_concept_sections(body: str) -> dict[str, str]:
+    """Return ``{section_name: body}`` for the four concept sections.
+
+    Defensive — mirrors ``_split_existing_concept`` in ``_merge.py`` but kept
+    private here to avoid widening that module's public API.
+    """
+    sections: dict[str, str] = {name: "" for name in CONCEPT_SECTIONS}
+    if not body.strip():
+        return sections
+
+    lines = body.splitlines()
+    start = 0
+    if lines and lines[0].strip() == "---":
+        for idx, line in enumerate(lines[1:], start=1):
+            if line.strip() == "---":
+                start = idx + 1
+                break
+
+    current: str | None = None
+    buffer: list[str] = []
+    for line in lines[start:]:
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            if current is not None:
+                sections[current] = "\n".join(buffer).strip()
+            heading = stripped[3:].strip()
+            current = heading if heading in sections else None
+            buffer = []
+            continue
+        if current is not None:
+            buffer.append(line)
+    if current is not None:
+        sections[current] = "\n".join(buffer).strip()
+    return sections
+
+
 def _relative(path: Path, workspace: Workspace) -> str:
     try:
         return path.relative_to(workspace.root).as_posix()
@@ -200,6 +439,17 @@ class IngestAgent:
     ``_default_planner`` builds a LangChain model and uses
     ``with_structured_output``.
 
+    ``headers`` may be passed through to the underlying chat model so callers
+    routing through a Claude-Code-compatible proxy (which often filters by
+    User-Agent or rejects ``x-stainless-*`` headers) can override the SDK
+    defaults. ``planner_method`` selects the strategy:
+
+    - ``"tool"``  — current behavior, ``with_structured_output`` (tool calling).
+    - ``"json"``  — raw JSON-mode planner with repair (see ``json_planner.py``).
+    - ``"auto"``  — try ``"tool"`` first; on a ``list_type`` ValidationError
+      (the nested-array-as-string GLM-via-proxy bug) fall back to ``"json"``
+      and log a one-line warning to stderr.
+
     A future iteration can swap the planner for a full deepagents loop with
     tool calls — the wiki primitives, ``apply_plan``, and this class's
     contract do not need to change for that.
@@ -213,14 +463,20 @@ class IngestAgent:
         system_prompt: str | None = None,
         planner: IngestPlanner | None = None,
         max_iterations: int = 8,
+        headers: dict[str, str] | None = None,
+        planner_method: PlannerMethod = "auto",
     ) -> None:
         self._workspace = workspace
         self._system_prompt = system_prompt or INGEST_SYSTEM_PROMPT
         self._max_iterations = max_iterations
+        self._headers: dict[str, str] = dict(headers or {})
+        self._planner_method: PlannerMethod = planner_method
         if planner is not None:
             self._planner: IngestPlanner = planner
         elif model is not None:
-            self._planner = _make_default_planner(model)
+            self._planner = _make_default_planner(
+                model, headers=self._headers, planner_method=planner_method
+            )
         else:
             raise ValueError(
                 "IngestAgent requires either an explicit planner or a model string"
@@ -232,6 +488,15 @@ class IngestAgent:
     @property
     def tools(self) -> list[Any]:
         return list(self._tools)
+
+    @property
+    def headers(self) -> dict[str, str]:
+        """Read-only view of the custom headers threaded into the default planner."""
+        return dict(self._headers)
+
+    @property
+    def planner_method(self) -> PlannerMethod:
+        return self._planner_method
 
     async def ingest(self, source: Source, extract_path: Path) -> IngestResult:
         if not extract_path.exists():
@@ -311,23 +576,60 @@ def _summarize_concepts(workspace: Workspace) -> list[str]:
     return rows
 
 
-def _make_default_planner(model: str) -> IngestPlanner:
+def _make_default_planner(
+    model: str,
+    *,
+    headers: dict[str, str] | None = None,
+    planner_method: PlannerMethod = "auto",
+) -> IngestPlanner:
     """Build a planner that uses LangChain's structured-output API.
 
     Imported lazily so the rest of the package stays importable when the
-    LangChain extras are not installed.
+    LangChain extras are not installed. ``headers`` (when non-empty) is
+    plumbed via ``default_headers`` which is supported by ``ChatAnthropic``
+    and ``ChatOpenAI``; for other providers the kwarg is silently dropped if
+    the constructor rejects it.
     """
     from langchain.chat_models import init_chat_model
 
-    chat = init_chat_model(model)
-    structured = chat.with_structured_output(IngestPlan)
+    init_kwargs: dict[str, Any] = {}
+    if headers:
+        init_kwargs["default_headers"] = dict(headers)
 
-    def _plan(prompt: str, *, schema: type[IngestPlan]) -> IngestPlan:
-        result = structured.invoke(prompt)
+    try:
+        chat = init_chat_model(model, **init_kwargs)
+    except TypeError:
+        # Some providers don't accept ``default_headers`` — try without.
+        chat = init_chat_model(model)
+
+    tool_structured = chat.with_structured_output(IngestPlan)
+    json_plan = make_json_planner(chat)
+
+    def _invoke_tool(prompt: str) -> IngestPlan:
+        result = tool_structured.invoke(prompt)
         if isinstance(result, IngestPlan):
             return result
-        # ``with_structured_output`` may return a dict when the schema can't be
-        # represented as a Pydantic instance by the provider — validate explicitly.
         return IngestPlan.model_validate(result)
+
+    def _plan(prompt: str, *, schema: type[IngestPlan]) -> IngestPlan:
+        if planner_method == "json":
+            result: IngestPlan = json_plan(prompt, schema=schema)
+            return result
+        if planner_method == "tool":
+            return _invoke_tool(prompt)
+        # ``auto``: prefer the tool path; retry via JSON on the known proxy bug.
+        try:
+            return _invoke_tool(prompt)
+        except ValidationError as exc:
+            if not is_nested_list_string_error(exc):
+                raise
+            print(
+                "[xreadagent] structured-output (tool) returned a nested list "
+                "as a string; retrying with JSON-mode planner",
+                file=sys.stderr,
+                flush=True,
+            )
+            fallback: IngestPlan = json_plan(prompt, schema=schema)
+            return fallback
 
     return _plan

@@ -174,6 +174,18 @@ SIDECAR_READY port=59979
 
 ---
 
+### Pattern: Auto-inject infrastructure metadata in `apply_plan`
+
+**What**: After the planner returns its `IngestPlan` and before `save_distillation`, `apply_plan` populates the infrastructure metadata fields on every Entity / Claim / Relation / Task that the LLM left blank: `workspaceId` (defaults to the workspace root's directory name), `createdAt` / `updatedAt` (UTC ISO 8601 with `Z`), `origin` (`ingest:{source.id}`), `status` (`active`). The LLM is asked for *content* (title, summary, entityIds, sourceRefs), never for *infra* facts it cannot know correctly.
+
+Same pattern applies to `ConceptFrontmatter.type` — defaulted to `"concept"` in `apply_plan` when the LLM leaves it empty, because the field exists for future "type of concept page" extensibility, not as a meaningful prompt for v1 models.
+
+**Why**: Asking the LLM for `workspaceId` produces either `""` (because it sees no workspace context in the prompt) or hallucinations. Asking for `createdAt` produces inconsistent date formats. The right separation is: planner emits the bits the LLM is good at (judgments about entities and claims), `apply_plan` fills the bits the runtime knows authoritatively.
+
+**Test contract**: `test_apply_plan::test_apply_plan_auto_injects_infrastructure_metadata` asserts every collection item has populated metadata after a roundtrip. `test_apply_plan_defaults_concept_type_to_concept` pins the concept-type default.
+
+---
+
 ## Forbidden Patterns
 
 ### Don't: Auto-promote query content into the synthesis zone

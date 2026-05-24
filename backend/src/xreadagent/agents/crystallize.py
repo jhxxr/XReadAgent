@@ -14,17 +14,24 @@ log + conversation-log append.
 
 from __future__ import annotations
 
+import sys
 import time
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
+
+from pydantic import ValidationError
 
 from xreadagent.agents._merge import merge_concept_into_page
 from xreadagent.agents.crystallize_schema import (
     CrystallizeConceptPatch,
     CrystallizePaperPatch,
     CrystallizePlan,
+)
+from xreadagent.agents.json_planner import (
+    is_nested_list_string_error,
+    make_json_planner,
 )
 from xreadagent.schemas.wiki_pages import ConceptFrontmatter
 from xreadagent.wiki.atomic import atomic_write_text
@@ -36,6 +43,8 @@ from xreadagent.wiki.pages import (
     write_concept_page,
 )
 from xreadagent.wiki.workspace import Workspace
+
+PlannerMethod = Literal["auto", "tool", "json"]
 
 # Map snake_case schema section names to the title-case headings the writer uses.
 _PAPER_SECTION_HEADINGS: dict[str, str] = {
@@ -96,17 +105,31 @@ class CrystallizeAgent:
         model: str | None = None,
         system_prompt: str | None = None,
         planner: CrystallizePlanner | None = None,
+        headers: dict[str, str] | None = None,
+        planner_method: PlannerMethod = "auto",
     ) -> None:
         self._workspace = workspace
         self._system_prompt = system_prompt or CRYSTALLIZE_SYSTEM_PROMPT
+        self._headers: dict[str, str] = dict(headers or {})
+        self._planner_method: PlannerMethod = planner_method
         if planner is not None:
             self._planner: CrystallizePlanner = planner
         elif model is not None:
-            self._planner = _make_default_planner(model)
+            self._planner = _make_default_planner(
+                model, headers=self._headers, planner_method=planner_method
+            )
         else:
             raise ValueError(
                 "CrystallizeAgent requires either an explicit planner or a model string"
             )
+
+    @property
+    def headers(self) -> dict[str, str]:
+        return dict(self._headers)
+
+    @property
+    def planner_method(self) -> PlannerMethod:
+        return self._planner_method
 
     async def propose(self, query_archive_path: Path) -> CrystallizeProposal:
         if not query_archive_path.exists():
@@ -143,17 +166,51 @@ class CrystallizeAgent:
         )
 
 
-def _make_default_planner(model: str) -> CrystallizePlanner:
+def _make_default_planner(
+    model: str,
+    *,
+    headers: dict[str, str] | None = None,
+    planner_method: PlannerMethod = "auto",
+) -> CrystallizePlanner:
     from langchain.chat_models import init_chat_model
 
-    chat = init_chat_model(model)
-    structured = chat.with_structured_output(CrystallizePlan)
+    init_kwargs: dict[str, Any] = {}
+    if headers:
+        init_kwargs["default_headers"] = dict(headers)
 
-    def _plan(prompt: str, *, schema: type[CrystallizePlan]) -> CrystallizePlan:
-        result = structured.invoke(prompt)
+    try:
+        chat = init_chat_model(model, **init_kwargs)
+    except TypeError:
+        chat = init_chat_model(model)
+
+    tool_structured = chat.with_structured_output(CrystallizePlan)
+    json_plan = make_json_planner(chat)
+
+    def _invoke_tool(prompt: str) -> CrystallizePlan:
+        result = tool_structured.invoke(prompt)
         if isinstance(result, CrystallizePlan):
             return result
         return CrystallizePlan.model_validate(result)
+
+    def _plan(prompt: str, *, schema: type[CrystallizePlan]) -> CrystallizePlan:
+        if planner_method == "json":
+            result: CrystallizePlan = json_plan(prompt, schema=schema)
+            return result
+        if planner_method == "tool":
+            return _invoke_tool(prompt)
+        try:
+            return _invoke_tool(prompt)
+        except ValidationError as exc:
+            if not is_nested_list_string_error(exc):
+                raise
+            print(
+                "[xreadagent] structured-output (tool) returned a nested list "
+                "as a string; retrying with JSON-mode planner",
+                file=sys.stderr,
+                flush=True,
+            )
+            fallback: CrystallizePlan = json_plan(prompt, schema=schema)
+            return fallback
 
     return _plan
 

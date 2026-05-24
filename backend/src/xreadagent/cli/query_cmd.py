@@ -7,9 +7,14 @@ import argparse
 import asyncio
 from pathlib import Path
 
-from xreadagent.agents.query import QueryAgent
+from xreadagent.agents.query import PlannerMethod, QueryAgent
 from xreadagent.agents.query_orchestrator import answer_query
 from xreadagent.cli.env import ensure_provider_credentials, load_env_files
+from xreadagent.cli.llm_flags import (
+    add_llm_runtime_flags,
+    resolve_env_override,
+    resolve_headers,
+)
 from xreadagent.cli.output import emit_list, emit_many, error, progress
 from xreadagent.cli.stubs import stub_query_planner, use_stub_planner
 from xreadagent.wiki.workspace import Workspace
@@ -52,13 +57,26 @@ def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) 
             "(also enabled by XREADAGENT_STUB_PLANNER=1; used by tests)."
         ),
     )
+    add_llm_runtime_flags(parser)
     parser.set_defaults(handler=run)
 
 
-def _build_agent(workspace: Workspace, model: str, *, force_stub: bool) -> QueryAgent:
+def _build_agent(
+    workspace: Workspace,
+    model: str,
+    *,
+    force_stub: bool,
+    headers: dict[str, str],
+    planner_method: PlannerMethod,
+) -> QueryAgent:
     if force_stub or use_stub_planner():
         return QueryAgent(workspace, planner=stub_query_planner)
-    return QueryAgent(workspace, model=model)
+    return QueryAgent(
+        workspace,
+        model=model,
+        headers=headers or None,
+        planner_method=planner_method,
+    )
 
 
 def run(args: argparse.Namespace) -> int:
@@ -67,6 +85,9 @@ def run(args: argparse.Namespace) -> int:
     model: str = args.model
     topic: str | None = args.topic
     force_stub: bool = bool(args.stub_planner)
+    planner_method: PlannerMethod = args.planner_method
+    headers = resolve_headers(args)
+    env_override = resolve_env_override(args)
 
     if not question.strip():
         error("question must be a non-empty string")
@@ -79,7 +100,11 @@ def run(args: argparse.Namespace) -> int:
         )
         return 1
 
-    load_env_files(workspace.root / ".env.local", Path.cwd() / ".env.local")
+    load_env_files(
+        workspace.root / ".env.local",
+        Path.cwd() / ".env.local",
+        override=env_override,
+    )
 
     using_stub = force_stub or use_stub_planner()
     if not using_stub:
@@ -91,9 +116,19 @@ def run(args: argparse.Namespace) -> int:
 
     progress(f"planner = {'stub' if using_stub else model}")
     progress("running QueryAgent (read-only)")
+    if not using_stub and headers:
+        progress(f"custom headers: {sorted(headers)}")
+    if not using_stub and env_override:
+        progress(".env.local override enabled (winning over shell env)")
 
     try:
-        agent = _build_agent(workspace, model, force_stub=force_stub)
+        agent = _build_agent(
+            workspace,
+            model,
+            force_stub=force_stub,
+            headers=headers,
+            planner_method=planner_method,
+        )
     except (ValueError, RuntimeError) as exc:
         error(str(exc))
         return 1

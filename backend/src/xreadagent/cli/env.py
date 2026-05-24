@@ -8,6 +8,12 @@ Lookup order matches conventional behavior:
    working directory (in that priority order), parse it and inject any
    missing keys.
 
+When ``override=True`` is passed (or ``--env-override`` / ``XREADAGENT_ENV_OVERRIDE``
+is set on the CLI), the ordering reverses: ``.env.local`` values win over
+shell-exported vars. This is the workaround for running XReadAgent inside
+another agent runtime (e.g. Claude Code itself) that leaks its own
+``ANTHROPIC_BASE_URL`` / ``ANTHROPIC_AUTH_TOKEN`` into the child env.
+
 The parser is deliberately minimal — it understands ``KEY=VALUE`` lines,
 strips surrounding whitespace, ignores blank lines and comment lines that
 start with ``#``, and supports single- or double-quoted values. It does
@@ -52,11 +58,15 @@ def parse_env_file(path: Path) -> dict[str, str]:
     return result
 
 
-def load_env_files(*candidates: Path) -> None:
+def load_env_files(*candidates: Path, override: bool = False) -> None:
     """Inject values from candidate ``.env.local`` files into ``os.environ``.
 
-    Earlier candidates win over later ones. Already-set env vars are never
-    overwritten — explicit shell exports always take priority.
+    Earlier candidates win over later ones. When ``override`` is False
+    (default), already-set env vars are never overwritten — explicit shell
+    exports take priority. When ``override=True``, ``.env.local`` values win
+    instead, which is the escape hatch for agent-host sandboxes (Claude Code,
+    Codex, etc.) that pre-set ``ANTHROPIC_*`` vars that point at the wrong
+    proxy.
     """
     seen: set[str] = set()
     for candidate in candidates:
@@ -64,7 +74,34 @@ def load_env_files(*candidates: Path) -> None:
             if key in seen:
                 continue
             seen.add(key)
-            os.environ.setdefault(key, value)
+            if override:
+                os.environ[key] = value
+            else:
+                os.environ.setdefault(key, value)
+
+
+def parse_headers_spec(spec: str) -> dict[str, str]:
+    """Parse a ``XREADAGENT_LLM_HEADERS``-style comma-separated header string.
+
+    Format: ``name1=value1,name2=value2`` — whitespace around names and
+    values is stripped. An empty value (``foo=``) is preserved so callers
+    can use it to clear a header that the SDK would otherwise add. Bad
+    entries (no ``=``) are silently skipped — this is a CLI convenience,
+    not a parser users will program against.
+    """
+    out: dict[str, str] = {}
+    if not spec:
+        return out
+    for raw in spec.split(","):
+        chunk = raw.strip()
+        if not chunk or "=" not in chunk:
+            continue
+        name, value = chunk.split("=", 1)
+        name = name.strip()
+        if not name:
+            continue
+        out[name] = value.strip()
+    return out
 
 
 def required_env_var_for_model(model: str) -> str | None:
@@ -111,5 +148,6 @@ __all__ = [
     "ensure_provider_credentials",
     "load_env_files",
     "parse_env_file",
+    "parse_headers_spec",
     "required_env_var_for_model",
 ]

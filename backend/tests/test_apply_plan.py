@@ -237,3 +237,105 @@ def test_apply_plan_fills_missing_source_refs(tmp_path: Path) -> None:
     assert loaded is not None
     assert len(loaded.entities[0].sourceRefs) == 1
     assert loaded.entities[0].sourceRefs[0].sourceId == slug
+
+
+def test_apply_plan_reverse_projects_claims_into_concept_pages(tmp_path: Path) -> None:
+    """A claim whose ``entityIds`` reference a concept lands in that concept's Related Claims."""
+    workspace = Workspace.at(tmp_path)
+    workspace.init_empty("Test")
+    slug = "rev-cccccccc"
+    plan = IngestPlan(
+        paper=_paper_page(slug).model_copy(update={"slug": slug}),
+        concepts=[
+            IngestConceptTouch(
+                slug="self-attention",
+                canonical_name="Self-Attention",
+                op="create",
+                summary_section="Sub-quadratic alternative to recurrence.",
+                related_papers_addition=[slug],
+                related_claims_addition=[],
+            )
+        ],
+        distillation=DistillationPayload(
+            source=_source(slug),
+            entities=[
+                Entity(
+                    id="entity-self-attention",
+                    title="Self-Attention",
+                    aliases=["self-attention"],
+                )
+            ],
+            claims=[
+                Claim(
+                    id="c-attn-1",
+                    title="Multi-head attention generalizes single-head attention",
+                    entityIds=["entity-self-attention"],
+                )
+            ],
+        ),
+        log_subject="Reverse-projection test",
+    )
+    apply_plan(workspace, plan, _source(slug))
+
+    concept_body = (workspace.concepts_dir / "self-attention.md").read_text(encoding="utf-8")
+    assert "## Related Claims" in concept_body
+    assert "- [c-attn-1] Multi-head attention generalizes single-head attention" in concept_body
+    # Source slug is included so a reader knows which paper introduced the claim.
+    assert f"({slug})" in concept_body
+
+
+def test_apply_plan_defaults_concept_type_to_concept(tmp_path: Path) -> None:
+    """An ``IngestConceptTouch`` with no explicit type still produces ``type: concept``."""
+    workspace = Workspace.at(tmp_path)
+    workspace.init_empty("Test")
+    slug = "type-dddddddd"
+    plan = IngestPlan(
+        paper=_paper_page(slug).model_copy(update={"slug": slug}),
+        concepts=[
+            IngestConceptTouch(
+                slug="layer-norm",
+                canonical_name="Layer Normalization",
+                op="create",
+                summary_section="Per-sample feature normalization.",
+            )
+        ],
+        distillation=_distillation(slug),
+        log_subject="Type default test",
+    )
+    apply_plan(workspace, plan, _source(slug))
+    fm = read_page_frontmatter(workspace.concepts_dir / "layer-norm.md")
+    assert fm["type"] == "concept"
+
+
+def test_apply_plan_auto_injects_infrastructure_metadata(tmp_path: Path) -> None:
+    """Workspaces, timestamps, origin, status get populated even when the LLM omits them."""
+    workspace = Workspace.at(tmp_path / "wkspace")
+    workspace.init_empty("Test")
+    slug = "meta-eeeeeeee"
+    plan = IngestPlan(
+        paper=_paper_page(slug).model_copy(update={"slug": slug}),
+        concepts=[],
+        distillation=DistillationPayload(
+            source=_source(slug),
+            entities=[Entity(id="ent", title="Bare Entity")],
+            claims=[
+                Claim(id="cl", title="Bare Claim", entityIds=["ent"]),
+            ],
+            relations=[
+                Relation(id="r", type="introduces", fromId="ent", toId="ent"),
+            ],
+            tasks=[Task(id="t", title="Open question?")],
+        ),
+        log_subject="Metadata injection test",
+    )
+    apply_plan(workspace, plan, _source(slug))
+
+    loaded = load_distillation(workspace, slug)
+    assert loaded is not None
+    for collection in (loaded.entities, loaded.claims, loaded.relations, loaded.tasks):
+        for item in collection:
+            assert item.workspaceId == "wkspace", item
+            assert item.createdAt.endswith("Z"), item.createdAt
+            assert item.updatedAt.endswith("Z"), item.updatedAt
+            assert item.origin == f"ingest:{slug}", item.origin
+            assert item.status == "active", item.status

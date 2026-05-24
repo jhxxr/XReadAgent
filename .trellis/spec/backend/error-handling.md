@@ -122,6 +122,21 @@ def validate_wiki_path(workspace_root: Path, candidate: str | Path) -> Path:
 
 ---
 
+### Pattern: Auto-repair structured output
+
+`agents/json_planner.py` provides a JSON-mode fallback for the `IngestPlan` / `QueryAnswer` / `CrystallizePlan` structured-output path. It exists because some Anthropic-compatible proxies (notably GLM-5.1 via translation shims like `cch.xinr.de`) emit nested `list[BaseModel]` fields as JSON-encoded strings instead of real lists. Pydantic strict mode (rightly) rejects that.
+
+When agents are constructed with `planner_method="auto"` (the default), the planner calls `with_structured_output(...).invoke()` first; on a `ValidationError` whose root cause is `list_type` (a string landed where a list was expected) the planner re-issues the request through `make_json_planner(chat)` which:
+
+1. Asks the model to return raw JSON only (no prose, no fences).
+2. Strips ```json / ``` fences if the model adds them anyway.
+3. Extracts the first balanced `{...}` block when the model surrounds the JSON with prose.
+4. Walks top-level fields and `json.loads`-unwraps any whose schema declares `list[BaseModel]` but whose value is a string.
+
+The retry is observed via a one-line `[xreadagent] structured-output (tool) returned a nested list as a string; retrying with JSON-mode planner` to stderr so users debugging proxy issues see it without `-v`. `planner_method="tool"` and `"json"` force one strategy unconditionally — useful for tests and for users with known-good or known-bad providers.
+
+---
+
 ## Common Mistakes
 
 ### Mistake: Re-validating inside loops

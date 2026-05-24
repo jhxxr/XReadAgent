@@ -416,3 +416,193 @@ def test_unknown_command_exits_nonzero(capsys: pytest.CaptureFixture[str]) -> No
         main(["bogus-command"])
     assert isinstance(info.value.code, int)
     assert info.value.code != 0
+
+
+# ---------------------------------------------------------------------------
+# New: --header / --user-agent / --planner-method / --env-override flags
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_help_documents_new_flags(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        main(["ingest", "--help"])
+    out = capsys.readouterr().out
+    for fragment in ("--header", "--user-agent", "--planner-method", "--env-override"):
+        assert fragment in out, fragment
+
+
+def test_query_help_documents_new_flags(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        main(["query", "--help"])
+    out = capsys.readouterr().out
+    for fragment in ("--header", "--user-agent", "--planner-method", "--env-override"):
+        assert fragment in out, fragment
+
+
+def test_ingest_threads_custom_headers_into_agent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Use --stub-planner but spy on the IngestAgent constructor to capture headers.
+
+    The stub-planner path skips the model wiring, so we patch ``_build_agent``
+    in the subcommand module to assert what was passed in instead. Indirect
+    but keeps the test deterministic with no LLM call.
+    """
+    monkeypatch.delenv("XREADAGENT_LLM_HEADERS", raising=False)
+    monkeypatch.delenv("XREADAGENT_LLM_USER_AGENT", raising=False)
+    workspace_path = tmp_path / "ws"
+    _run(["init", str(workspace_path), "--title", "X"], capsys=capsys)
+    workspace = Workspace.at(workspace_path)
+    raw = _drop_raw(workspace, "x.md", "# X\nbody")
+
+    captured: dict[str, object] = {}
+
+    import xreadagent.cli.ingest_cmd as ingest_cmd
+    from xreadagent.agents.ingest import IngestAgent
+    from xreadagent.cli.stubs import stub_ingest_planner
+
+    def fake_build_agent(
+        ws: Workspace,
+        model: str,
+        *,
+        force_stub: bool,
+        headers: dict[str, str],
+        planner_method: str,
+    ) -> IngestAgent:
+        captured["headers"] = headers
+        captured["planner_method"] = planner_method
+        return IngestAgent(ws, planner=stub_ingest_planner)
+
+    monkeypatch.setattr(ingest_cmd, "_build_agent", fake_build_agent)
+
+    rc, _out, _err = _run(
+        [
+            "ingest",
+            str(raw),
+            "--workspace",
+            str(workspace_path),
+            "--model",
+            "anthropic:claude-fake",
+            "--stub-planner",
+            "--header",
+            "user-agent=will-be-overridden",
+            "--user-agent",
+            "claude-cli/2.0",
+            "--header",
+            "x-stainless-arch=",
+            "--planner-method",
+            "json",
+        ],
+        capsys=capsys,
+    )
+
+    assert rc == 0
+    assert captured["headers"] == {
+        "user-agent": "claude-cli/2.0",
+        "x-stainless-arch": "",
+    }
+    assert captured["planner_method"] == "json"
+
+
+def test_query_threads_custom_headers_into_agent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("XREADAGENT_LLM_HEADERS", raising=False)
+    monkeypatch.delenv("XREADAGENT_LLM_USER_AGENT", raising=False)
+    workspace_path = tmp_path / "ws"
+    _run(["init", str(workspace_path), "--title", "X"], capsys=capsys)
+
+    captured: dict[str, object] = {}
+
+    import xreadagent.cli.query_cmd as query_cmd
+    from xreadagent.agents.query import QueryAgent
+    from xreadagent.cli.stubs import stub_query_planner
+
+    def fake_build_agent(
+        ws: Workspace,
+        model: str,
+        *,
+        force_stub: bool,
+        headers: dict[str, str],
+        planner_method: str,
+    ) -> QueryAgent:
+        captured["headers"] = headers
+        captured["planner_method"] = planner_method
+        return QueryAgent(ws, planner=stub_query_planner)
+
+    monkeypatch.setattr(query_cmd, "_build_agent", fake_build_agent)
+
+    rc, _out, _err = _run(
+        [
+            "query",
+            "what?",
+            "--workspace",
+            str(workspace_path),
+            "--model",
+            "openai:gpt-fake",
+            "--stub-planner",
+            "--header",
+            "x-trace=42",
+            "--planner-method",
+            "tool",
+        ],
+        capsys=capsys,
+    )
+    assert rc == 0
+    assert captured["headers"] == {"x-trace": "42"}
+    assert captured["planner_method"] == "tool"
+
+
+def test_ingest_agent_headers_property_round_trips(tmp_path: Path) -> None:
+    from xreadagent.agents.ingest import IngestAgent
+    from xreadagent.cli.stubs import stub_ingest_planner
+
+    workspace = Workspace.at(tmp_path / "ws")
+    workspace.init_empty("X")
+    agent = IngestAgent(
+        workspace,
+        planner=stub_ingest_planner,
+        headers={"user-agent": "ua/1.0"},
+        planner_method="json",
+    )
+    assert agent.headers == {"user-agent": "ua/1.0"}
+    assert agent.planner_method == "json"
+
+
+def test_ingest_env_override_flag_makes_envfile_win(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`--env-override` actually swaps the precedence inside the ingest command."""
+    workspace_path = tmp_path / "ws"
+    _run(["init", str(workspace_path), "--title", "X"], capsys=capsys)
+    workspace = Workspace.at(workspace_path)
+    raw = _drop_raw(workspace, "x.md", "# X\nbody")
+
+    # Pre-set the env so .env.local would normally lose.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "shell-key")
+    (workspace.root / ".env.local").write_text(
+        "ANTHROPIC_API_KEY=envfile-key\n", encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    rc, _out, _err = _run(
+        [
+            "ingest",
+            str(raw),
+            "--workspace",
+            str(workspace_path),
+            "--stub-planner",
+            "--env-override",
+        ],
+        capsys=capsys,
+    )
+    assert rc == 0
+    import os
+
+    assert os.environ["ANTHROPIC_API_KEY"] == "envfile-key"

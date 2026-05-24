@@ -14,16 +14,25 @@ returns ``QueryAnswer``) doesn't change.
 
 from __future__ import annotations
 
+import sys
 import time
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
+from pydantic import ValidationError
+
+from xreadagent.agents.json_planner import (
+    is_nested_list_string_error,
+    make_json_planner,
+)
 from xreadagent.agents.query_schema import QueryAnswer
 from xreadagent.agents.query_tools import build_query_tools
 from xreadagent.wiki.pages import read_page_frontmatter
 from xreadagent.wiki.workspace import Workspace
+
+PlannerMethod = Literal["auto", "tool", "json"]
 
 
 def _load_system_prompt() -> str:
@@ -69,14 +78,20 @@ class QueryAgent:
         system_prompt: str | None = None,
         max_tool_iterations: int = 6,
         planner: QueryPlanner | None = None,
+        headers: dict[str, str] | None = None,
+        planner_method: PlannerMethod = "auto",
     ) -> None:
         self._workspace = workspace
         self._system_prompt = system_prompt or QUERY_SYSTEM_PROMPT
         self._max_tool_iterations = max_tool_iterations
+        self._headers: dict[str, str] = dict(headers or {})
+        self._planner_method: PlannerMethod = planner_method
         if planner is not None:
             self._planner: QueryPlanner = planner
         elif model is not None:
-            self._planner = _make_default_planner(model)
+            self._planner = _make_default_planner(
+                model, headers=self._headers, planner_method=planner_method
+            )
         else:
             raise ValueError(
                 "QueryAgent requires either an explicit planner or a model string"
@@ -88,6 +103,15 @@ class QueryAgent:
     @property
     def tools(self) -> list[Any]:
         return list(self._tools)
+
+    @property
+    def headers(self) -> dict[str, str]:
+        """Read-only view of the custom headers threaded into the default planner."""
+        return dict(self._headers)
+
+    @property
+    def planner_method(self) -> PlannerMethod:
+        return self._planner_method
 
     async def answer(self, question: str, *, topic: str | None = None) -> QueryAgentOutcome:
         clean_question = question.strip()
@@ -157,22 +181,57 @@ def _summarize_concepts(workspace: Workspace) -> list[str]:
     return rows
 
 
-def _make_default_planner(model: str) -> QueryPlanner:
+def _make_default_planner(
+    model: str,
+    *,
+    headers: dict[str, str] | None = None,
+    planner_method: PlannerMethod = "auto",
+) -> QueryPlanner:
     """Build a planner that uses LangChain's structured-output API.
 
     Imported lazily so the rest of the package stays importable when the
-    LangChain extras are not installed.
+    LangChain extras are not installed. See ``ingest._make_default_planner``
+    for the headers / planner_method rationale — same proxy-compat story.
     """
     from langchain.chat_models import init_chat_model
 
-    chat = init_chat_model(model)
-    structured = chat.with_structured_output(QueryAnswer)
+    init_kwargs: dict[str, Any] = {}
+    if headers:
+        init_kwargs["default_headers"] = dict(headers)
 
-    def _plan(prompt: str, *, schema: type[QueryAnswer]) -> QueryAnswer:
-        result = structured.invoke(prompt)
+    try:
+        chat = init_chat_model(model, **init_kwargs)
+    except TypeError:
+        chat = init_chat_model(model)
+
+    tool_structured = chat.with_structured_output(QueryAnswer)
+    json_plan = make_json_planner(chat)
+
+    def _invoke_tool(prompt: str) -> QueryAnswer:
+        result = tool_structured.invoke(prompt)
         if isinstance(result, QueryAnswer):
             return result
         return QueryAnswer.model_validate(result)
+
+    def _plan(prompt: str, *, schema: type[QueryAnswer]) -> QueryAnswer:
+        if planner_method == "json":
+            result: QueryAnswer = json_plan(prompt, schema=schema)
+            return result
+        if planner_method == "tool":
+            return _invoke_tool(prompt)
+        try:
+            return _invoke_tool(prompt)
+        except ValidationError as exc:
+            if not is_nested_list_string_error(exc):
+                raise
+            print(
+                "[xreadagent] structured-output (tool) returned a nested list "
+                "as a string; retrying with JSON-mode planner",
+                file=sys.stderr,
+                flush=True,
+            )
+            fallback: QueryAnswer = json_plan(prompt, schema=schema)
+            return fallback
 
     return _plan
 
