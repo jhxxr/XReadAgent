@@ -22,8 +22,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from xreadagent.agents.json_planner import (
     is_nested_list_string_error,
+    is_truncated_output_error,
     make_json_planner,
     parse_and_repair,
+    should_retry_with_json_planner,
 )
 
 
@@ -153,5 +155,84 @@ def test_is_nested_list_string_error_false_for_unrelated_error() -> None:
         _Outer.model_validate({"items": []})
     except ValidationError as exc:
         assert is_nested_list_string_error(exc) is False
+    else:
+        pytest.fail("expected ValidationError")
+
+
+# ---------------------------------------------------------------------------
+# New auto-fallback predicates: truncated output + combined gate
+# ---------------------------------------------------------------------------
+
+
+def test_should_retry_with_json_planner_on_list_type_error() -> None:
+    """The original nested-list-as-string trigger still routes through retry."""
+    from pydantic import ValidationError
+
+    bad = {"title": "T", "items": json.dumps([{"slug": "s", "name": "N"}])}
+    try:
+        _Outer.model_validate(bad)
+    except ValidationError as exc:
+        assert should_retry_with_json_planner(exc) is True
+    else:
+        pytest.fail("expected ValidationError")
+
+
+def test_should_retry_with_json_planner_on_none_model_type_error() -> None:
+    """A truncated tool path lands as ``model_type`` with ``input=None``."""
+    from pydantic import ValidationError
+
+    # The tool path's failure shape: ``with_structured_output`` hands None
+    # to the schema's outer validator when the chat model emitted no parseable
+    # tool_use block.
+    try:
+        _Outer.model_validate(None)  # type: ignore[arg-type]
+    except ValidationError as exc:
+        assert is_truncated_output_error(exc) is True
+        assert should_retry_with_json_planner(exc) is True
+    else:
+        pytest.fail("expected ValidationError")
+
+
+def test_should_retry_with_json_planner_returns_false_on_unrelated_error() -> None:
+    """Missing required field is a real model bug — bubble it up, don't retry."""
+    from pydantic import ValidationError
+
+    try:
+        _Outer.model_validate({"items": []})
+    except ValidationError as exc:
+        assert should_retry_with_json_planner(exc) is False
+    else:
+        pytest.fail("expected ValidationError on missing required ``title``")
+
+
+def test_should_retry_with_json_planner_returns_false_on_literal_mismatch() -> None:
+    """A Literal mismatch (e.g. enum field) is a real bug — bubble up."""
+    from typing import Literal
+
+    from pydantic import ConfigDict, ValidationError
+
+    class _Enum(BaseModel):
+        model_config = ConfigDict(strict=True, extra="forbid")
+        kind: Literal["a", "b"]
+
+    try:
+        _Enum.model_validate({"kind": "c"})
+    except ValidationError as exc:
+        # Sanity check that this is NOT mis-classified as a retry-able failure.
+        assert should_retry_with_json_planner(exc) is False
+    else:
+        pytest.fail("expected ValidationError on Literal mismatch")
+
+
+def test_is_truncated_output_error_false_on_present_but_wrong_input() -> None:
+    """A ``model_type`` whose input is a non-None value is NOT truncation."""
+    from pydantic import ValidationError
+
+    try:
+        # Passing a list where a BaseModel is expected — that's a shape bug,
+        # not a "tool returned nothing" failure.
+        _Outer.model_validate(["not", "a", "dict"])  # type: ignore[arg-type]
+    except ValidationError as exc:
+        assert is_truncated_output_error(exc) is False
     else:
         pytest.fail("expected ValidationError")

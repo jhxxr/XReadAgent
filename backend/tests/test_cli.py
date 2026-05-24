@@ -470,6 +470,7 @@ def test_ingest_threads_custom_headers_into_agent(
         force_stub: bool,
         headers: dict[str, str],
         planner_method: str,
+        max_tokens: int | None,
     ) -> IngestAgent:
         captured["headers"] = headers
         captured["planner_method"] = planner_method
@@ -529,6 +530,7 @@ def test_query_threads_custom_headers_into_agent(
         force_stub: bool,
         headers: dict[str, str],
         planner_method: str,
+        max_tokens: int | None,
     ) -> QueryAgent:
         captured["headers"] = headers
         captured["planner_method"] = planner_method
@@ -606,3 +608,238 @@ def test_ingest_env_override_flag_makes_envfile_win(
     import os
 
     assert os.environ["ANTHROPIC_API_KEY"] == "envfile-key"
+
+
+# ---------------------------------------------------------------------------
+# --max-tokens flag + XREADAGENT_LLM_MAX_TOKENS env var
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_help_documents_max_tokens_flag(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit):
+        main(["ingest", "--help"])
+    out = capsys.readouterr().out
+    assert "--max-tokens" in out
+
+
+def test_query_help_documents_max_tokens_flag(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit):
+        main(["query", "--help"])
+    out = capsys.readouterr().out
+    assert "--max-tokens" in out
+
+
+def _spy_on_ingest_build_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, object]:
+    """Patch ``_build_agent`` to capture its kwargs without invoking real LLM."""
+    captured: dict[str, object] = {}
+    import xreadagent.cli.ingest_cmd as ingest_cmd
+    from xreadagent.agents.ingest import IngestAgent
+    from xreadagent.cli.stubs import stub_ingest_planner
+
+    def fake_build_agent(
+        ws: Workspace,
+        model: str,
+        *,
+        force_stub: bool,
+        headers: dict[str, str],
+        planner_method: str,
+        max_tokens: int | None,
+    ) -> IngestAgent:
+        captured["max_tokens_arg"] = max_tokens
+        agent = IngestAgent(
+            ws, planner=stub_ingest_planner, max_tokens=max_tokens
+        )
+        captured["agent_max_tokens"] = agent.max_tokens
+        return agent
+
+    monkeypatch.setattr(ingest_cmd, "_build_agent", fake_build_agent)
+    return captured
+
+
+def test_max_tokens_flag_threads_into_agent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("XREADAGENT_LLM_MAX_TOKENS", raising=False)
+    workspace_path = tmp_path / "ws"
+    _run(["init", str(workspace_path), "--title", "X"], capsys=capsys)
+    workspace = Workspace.at(workspace_path)
+    raw = _drop_raw(workspace, "x.md", "# X\nbody")
+
+    captured = _spy_on_ingest_build_agent(monkeypatch)
+
+    rc, _out, err = _run(
+        [
+            "ingest",
+            str(raw),
+            "--workspace",
+            str(workspace_path),
+            "--stub-planner",
+            "--model",
+            "anthropic:claude-fake",
+            "--max-tokens",
+            "4096",
+        ],
+        capsys=capsys,
+    )
+    assert rc == 0
+    assert captured["max_tokens_arg"] == 4096
+    assert captured["agent_max_tokens"] == 4096
+    # ``progress()`` writes to stderr — that's where the effective-budget
+    # one-liner shows up for the user.
+    assert "max_tokens = 4096" in err
+
+
+def test_max_tokens_env_var_resolves(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("XREADAGENT_LLM_MAX_TOKENS", "8192")
+    workspace_path = tmp_path / "ws"
+    _run(["init", str(workspace_path), "--title", "X"], capsys=capsys)
+    workspace = Workspace.at(workspace_path)
+    raw = _drop_raw(workspace, "x.md", "# X\nbody")
+
+    captured = _spy_on_ingest_build_agent(monkeypatch)
+
+    rc, _out, err = _run(
+        [
+            "ingest",
+            str(raw),
+            "--workspace",
+            str(workspace_path),
+            "--stub-planner",
+            "--model",
+            "anthropic:claude-fake",
+        ],
+        capsys=capsys,
+    )
+    assert rc == 0
+    assert captured["max_tokens_arg"] == 8192
+    assert captured["agent_max_tokens"] == 8192
+    assert "max_tokens = 8192" in err
+
+
+def test_max_tokens_default_when_unset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("XREADAGENT_LLM_MAX_TOKENS", raising=False)
+    workspace_path = tmp_path / "ws"
+    _run(["init", str(workspace_path), "--title", "X"], capsys=capsys)
+    workspace = Workspace.at(workspace_path)
+    raw = _drop_raw(workspace, "x.md", "# X\nbody")
+
+    captured = _spy_on_ingest_build_agent(monkeypatch)
+
+    rc, _out, err = _run(
+        [
+            "ingest",
+            str(raw),
+            "--workspace",
+            str(workspace_path),
+            "--stub-planner",
+            "--model",
+            "anthropic:claude-fake",
+        ],
+        capsys=capsys,
+    )
+    assert rc == 0
+    # ``None`` here means "use the agent default", and the agent should
+    # materialise it to DEFAULT_AGENT_MAX_TOKENS.
+    from xreadagent.agents import DEFAULT_AGENT_MAX_TOKENS
+
+    assert captured["max_tokens_arg"] is None
+    assert captured["agent_max_tokens"] == DEFAULT_AGENT_MAX_TOKENS
+    assert f"max_tokens = {DEFAULT_AGENT_MAX_TOKENS}" in err
+
+
+def test_max_tokens_invalid_env_var_falls_back_to_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("XREADAGENT_LLM_MAX_TOKENS", "not-an-int")
+    workspace_path = tmp_path / "ws"
+    _run(["init", str(workspace_path), "--title", "X"], capsys=capsys)
+    workspace = Workspace.at(workspace_path)
+    raw = _drop_raw(workspace, "x.md", "# X\nbody")
+
+    captured = _spy_on_ingest_build_agent(monkeypatch)
+
+    rc, _out, err = _run(
+        [
+            "ingest",
+            str(raw),
+            "--workspace",
+            str(workspace_path),
+            "--stub-planner",
+            "--model",
+            "anthropic:claude-fake",
+        ],
+        capsys=capsys,
+    )
+    assert rc == 0
+    from xreadagent.agents import DEFAULT_AGENT_MAX_TOKENS
+
+    assert captured["max_tokens_arg"] is None
+    assert captured["agent_max_tokens"] == DEFAULT_AGENT_MAX_TOKENS
+    # The warning must reach stderr — that's our user-visible signal that
+    # the env var was malformed.
+    assert "XREADAGENT_LLM_MAX_TOKENS" in err
+    assert "must be an integer" in err
+
+
+def test_agent_max_tokens_property_is_read_only(tmp_path: Path) -> None:
+    """``max_tokens`` is a public attribute but has no setter."""
+    from xreadagent.agents.ingest import IngestAgent
+    from xreadagent.cli.stubs import stub_ingest_planner
+
+    workspace = Workspace.at(tmp_path / "ws")
+    workspace.init_empty("X")
+    agent = IngestAgent(
+        workspace, planner=stub_ingest_planner, max_tokens=12345
+    )
+    assert agent.max_tokens == 12345
+    with pytest.raises(AttributeError):
+        agent.max_tokens = 1  # type: ignore[misc]
+
+
+def test_query_agent_max_tokens_property_is_read_only(tmp_path: Path) -> None:
+    from xreadagent.agents.query import QueryAgent
+    from xreadagent.cli.stubs import stub_query_planner
+
+    workspace = Workspace.at(tmp_path / "ws")
+    workspace.init_empty("X")
+    agent = QueryAgent(
+        workspace, planner=stub_query_planner, max_tokens=999
+    )
+    assert agent.max_tokens == 999
+    with pytest.raises(AttributeError):
+        agent.max_tokens = 1  # type: ignore[misc]
+
+
+def test_crystallize_agent_max_tokens_property_is_read_only(tmp_path: Path) -> None:
+    from xreadagent.agents.crystallize import CrystallizeAgent
+
+    workspace = Workspace.at(tmp_path / "ws")
+    workspace.init_empty("X")
+
+    def _stub_planner(prompt: str, *, schema: type) -> object:  # pragma: no cover
+        raise NotImplementedError
+
+    agent = CrystallizeAgent(
+        workspace, planner=_stub_planner, max_tokens=7
+    )
+    assert agent.max_tokens == 7
+    with pytest.raises(AttributeError):
+        agent.max_tokens = 1  # type: ignore[misc]

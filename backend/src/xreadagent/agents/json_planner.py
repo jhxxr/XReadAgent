@@ -236,8 +236,47 @@ def is_nested_list_string_error(exc: ValidationError) -> bool:
     return False
 
 
+def is_truncated_output_error(exc: ValidationError) -> bool:
+    """Return True if ``exc`` looks like a "tool call returned nothing" failure.
+
+    When the underlying chat model's ``max_tokens`` budget is exhausted by
+    extended thinking (or any other reason the tool-calling path produces an
+    empty response), ``with_structured_output`` ends up handing ``None`` to
+    Pydantic for the whole schema. Pydantic surfaces that as a ``model_type``
+    error whose ``input`` is ``None``.
+
+    Distinguishing this from a generic ``model_type`` mismatch lets the
+    ``auto`` planner safely retry via the JSON-mode path (which skips the
+    tool round-trip and often succeeds even when the budget is tight).
+    """
+    for err in exc.errors():
+        if err.get("type") != "model_type":
+            continue
+        # Pydantic's ``ErrorDetails`` exposes the offending value under
+        # ``input``; treat a literal ``None`` (or missing key) as the
+        # truncation signature.
+        if err.get("input", "__sentinel__") is None:
+            return True
+    return False
+
+
+def should_retry_with_json_planner(exc: ValidationError) -> bool:
+    """Return True for either retry-able structured-output failure.
+
+    Combines :func:`is_nested_list_string_error` (the documented GLM-via-proxy
+    nested-list-as-string bug) and :func:`is_truncated_output_error` (the
+    "tool path returned None because of a tight token budget" failure). Both
+    are well-served by a JSON-mode retry; other ValidationError kinds (missing
+    required field, Literal mismatch, type coercion failure on a leaf) are
+    real model bugs and should bubble up.
+    """
+    return is_nested_list_string_error(exc) or is_truncated_output_error(exc)
+
+
 __all__ = [
     "is_nested_list_string_error",
+    "is_truncated_output_error",
     "make_json_planner",
     "parse_and_repair",
+    "should_retry_with_json_planner",
 ]

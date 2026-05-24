@@ -37,11 +37,14 @@ from typing import Any, Literal, Protocol
 
 from pydantic import ValidationError
 
+from xreadagent.agents._defaults import DEFAULT_AGENT_MAX_TOKENS
 from xreadagent.agents._merge import merge_concept_into_page
 from xreadagent.agents.ingest_schema import IngestPlan
 from xreadagent.agents.json_planner import (
     is_nested_list_string_error,
+    is_truncated_output_error,
     make_json_planner,
+    should_retry_with_json_planner,
 )
 from xreadagent.agents.tools import build_ingest_tools
 from xreadagent.schemas.entities import Claim, SourceRef
@@ -446,9 +449,16 @@ class IngestAgent:
 
     - ``"tool"``  — current behavior, ``with_structured_output`` (tool calling).
     - ``"json"``  — raw JSON-mode planner with repair (see ``json_planner.py``).
-    - ``"auto"``  — try ``"tool"`` first; on a ``list_type`` ValidationError
-      (the nested-array-as-string GLM-via-proxy bug) fall back to ``"json"``
-      and log a one-line warning to stderr.
+    - ``"auto"``  — try ``"tool"`` first; on either a ``list_type`` ValidationError
+      (the nested-array-as-string GLM-via-proxy bug) or a ``model_type``-on-None
+      ValidationError (the tool path returned nothing because the model's
+      ``max_tokens`` budget was eaten by extended thinking) fall back to
+      ``"json"`` and log a one-line warning to stderr.
+
+    ``max_tokens`` lets callers raise the token budget the underlying chat
+    model uses for its reply. Pass ``None`` (default) to apply
+    :data:`xreadagent.agents._defaults.DEFAULT_AGENT_MAX_TOKENS`; pass an int
+    to override. Read-only after construction via the ``max_tokens`` property.
 
     A future iteration can swap the planner for a full deepagents loop with
     tool calls — the wiki primitives, ``apply_plan``, and this class's
@@ -465,17 +475,27 @@ class IngestAgent:
         max_iterations: int = 8,
         headers: dict[str, str] | None = None,
         planner_method: PlannerMethod = "auto",
+        max_tokens: int | None = None,
     ) -> None:
         self._workspace = workspace
         self._system_prompt = system_prompt or INGEST_SYSTEM_PROMPT
         self._max_iterations = max_iterations
         self._headers: dict[str, str] = dict(headers or {})
         self._planner_method: PlannerMethod = planner_method
+        # Resolve once at construction so the public ``max_tokens`` attribute
+        # always reflects what the default planner would use; callers can
+        # introspect it without re-deriving the default.
+        self._max_tokens: int = (
+            max_tokens if max_tokens is not None else DEFAULT_AGENT_MAX_TOKENS
+        )
         if planner is not None:
             self._planner: IngestPlanner = planner
         elif model is not None:
             self._planner = _make_default_planner(
-                model, headers=self._headers, planner_method=planner_method
+                model,
+                headers=self._headers,
+                planner_method=planner_method,
+                max_tokens=self._max_tokens,
             )
         else:
             raise ValueError(
@@ -497,6 +517,11 @@ class IngestAgent:
     @property
     def planner_method(self) -> PlannerMethod:
         return self._planner_method
+
+    @property
+    def max_tokens(self) -> int:
+        """Read-only ``max_tokens`` the default planner uses for chat replies."""
+        return self._max_tokens
 
     async def ingest(self, source: Source, extract_path: Path) -> IngestResult:
         if not extract_path.exists():
@@ -581,6 +606,7 @@ def _make_default_planner(
     *,
     headers: dict[str, str] | None = None,
     planner_method: PlannerMethod = "auto",
+    max_tokens: int | None = None,
 ) -> IngestPlanner:
     """Build a planner that uses LangChain's structured-output API.
 
@@ -589,18 +615,24 @@ def _make_default_planner(
     plumbed via ``default_headers`` which is supported by ``ChatAnthropic``
     and ``ChatOpenAI``; for other providers the kwarg is silently dropped if
     the constructor rejects it.
+
+    ``max_tokens`` is forwarded to ``init_chat_model`` as an unknown kwarg —
+    LangChain passes it through to the underlying provider class
+    (``ChatAnthropic(max_tokens=...)``, ``ChatOpenAI(max_tokens=...)``). When
+    ``None`` we fall back to :data:`DEFAULT_AGENT_MAX_TOKENS`. Providers that
+    don't accept the kwarg are tolerated via the same ``TypeError`` retry
+    we already use for ``default_headers``.
     """
     from langchain.chat_models import init_chat_model
 
-    init_kwargs: dict[str, Any] = {}
+    resolved_max_tokens = (
+        max_tokens if max_tokens is not None else DEFAULT_AGENT_MAX_TOKENS
+    )
+    init_kwargs: dict[str, Any] = {"max_tokens": resolved_max_tokens}
     if headers:
         init_kwargs["default_headers"] = dict(headers)
 
-    try:
-        chat = init_chat_model(model, **init_kwargs)
-    except TypeError:
-        # Some providers don't accept ``default_headers`` — try without.
-        chat = init_chat_model(model)
+    chat = _init_chat_model_with_optional_kwargs(init_chat_model, model, init_kwargs)
 
     tool_structured = chat.with_structured_output(IngestPlan)
     json_plan = make_json_planner(chat)
@@ -617,15 +649,21 @@ def _make_default_planner(
             return result
         if planner_method == "tool":
             return _invoke_tool(prompt)
-        # ``auto``: prefer the tool path; retry via JSON on the known proxy bug.
+        # ``auto``: prefer the tool path; retry via JSON on documented failures.
         try:
             return _invoke_tool(prompt)
         except ValidationError as exc:
-            if not is_nested_list_string_error(exc):
+            if not should_retry_with_json_planner(exc):
                 raise
+            if is_nested_list_string_error(exc):
+                reason = "returned a nested list as a string"
+            elif is_truncated_output_error(exc):
+                reason = "returned no parseable result"
+            else:  # pragma: no cover — should_retry already gated this
+                reason = "produced a retry-able structured-output failure"
             print(
-                "[xreadagent] structured-output (tool) returned a nested list "
-                "as a string; retrying with JSON-mode planner",
+                f"[xreadagent] structured-output (tool) {reason}; "
+                "retrying with JSON-mode planner",
                 file=sys.stderr,
                 flush=True,
             )
@@ -633,3 +671,27 @@ def _make_default_planner(
             return fallback
 
     return _plan
+
+
+def _init_chat_model_with_optional_kwargs(
+    init_chat_model: Any, model: str, init_kwargs: dict[str, Any]
+) -> Any:
+    """Call ``init_chat_model`` and gracefully drop kwargs the provider rejects.
+
+    Both ``default_headers`` and ``max_tokens`` are provider-specific kwargs
+    that LangChain forwards verbatim. Older providers / niche ones may raise
+    ``TypeError`` for unknown kwargs; we retry without the offending kwarg
+    rather than crash. The retry order is "drop headers first, then drop
+    max_tokens" because losing the budget is the worse failure mode.
+    """
+    try:
+        return init_chat_model(model, **init_kwargs)
+    except TypeError:
+        pass
+    # Drop ``default_headers`` and retry — most common rejection.
+    retry_kwargs = {k: v for k, v in init_kwargs.items() if k != "default_headers"}
+    try:
+        return init_chat_model(model, **retry_kwargs)
+    except TypeError:
+        # As a last resort drop everything we added and use the raw factory.
+        return init_chat_model(model)

@@ -4,12 +4,15 @@
 Three concerns are factored here:
 
 - ``add_llm_runtime_flags`` adds ``--header`` / ``--user-agent`` /
-  ``--planner-method`` / ``--env-override`` to a subparser so the flag UX
-  stays consistent.
+  ``--planner-method`` / ``--env-override`` / ``--max-tokens`` to a subparser
+  so the flag UX stays consistent.
 - ``resolve_headers`` merges three sources (env vars, ``XREADAGENT_LLM_HEADERS``,
   explicit ``--header NAME=VALUE`` flags) with documented precedence.
 - ``resolve_env_override`` honors either the flag or
   ``XREADAGENT_ENV_OVERRIDE=1``.
+- ``resolve_max_tokens`` merges the ``--max-tokens`` flag and
+  ``XREADAGENT_LLM_MAX_TOKENS`` env var, falling back to ``None`` (the
+  sentinel that means "use the agent default").
 
 Kept separate from each subcommand module so a third subcommand (e.g.
 ``crystallize``) can opt in without copy-pasting.
@@ -19,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 
 from xreadagent.agents.ingest import PlannerMethod
 from xreadagent.cli.env import parse_headers_spec
@@ -59,7 +63,8 @@ def add_llm_runtime_flags(parser: argparse.ArgumentParser) -> None:
             "How to coax structured output from the model. 'tool' uses "
             "with_structured_output(); 'json' uses raw JSON mode + repair; "
             "'auto' (default) tries tool first and falls back to json on the "
-            "known nested-list-as-string proxy bug."
+            "known nested-list-as-string proxy bug or when the tool path "
+            "returns nothing (typically a max_tokens budget exhaustion)."
         ),
     )
     parser.add_argument(
@@ -72,6 +77,20 @@ def add_llm_runtime_flags(parser: argparse.ArgumentParser) -> None:
             "ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN leaks into the "
             "child env and points at the wrong endpoint. Also reads "
             "XREADAGENT_ENV_OVERRIDE=1."
+        ),
+    )
+    parser.add_argument(
+        "--max-tokens",
+        dest="max_tokens",
+        type=int,
+        default=None,
+        help=(
+            "Override the chat model's max_tokens reply budget. Default: the "
+            "agent's DEFAULT_AGENT_MAX_TOKENS constant (16384). Raise this "
+            "when extended-thinking models (GLM-5.1, Claude Opus thinking, "
+            "etc.) eat the budget on internal reasoning and the structured "
+            "output comes back empty. Also reads XREADAGENT_LLM_MAX_TOKENS "
+            "as a fallback."
         ),
     )
 
@@ -124,8 +143,51 @@ def resolve_env_override(args: argparse.Namespace) -> bool:
     }
 
 
+def resolve_max_tokens(args: argparse.Namespace) -> int | None:
+    """Resolve the effective ``max_tokens`` from CLI flag + env var.
+
+    Precedence (later wins):
+    1. ``XREADAGENT_LLM_MAX_TOKENS`` env var (parsed as int; non-int values
+       trigger a one-line stderr warning and are ignored).
+    2. ``--max-tokens N`` CLI flag.
+
+    Returns ``None`` when neither is set — the agent's
+    ``DEFAULT_AGENT_MAX_TOKENS`` constant will then apply at construction
+    time. Returns the resolved positive integer otherwise. We intentionally
+    do NOT cap the upper bound here; the model provider will reject anything
+    out of range on its own with a clearer error than we could synthesize.
+    """
+    resolved: int | None = None
+    raw_env = os.environ.get("XREADAGENT_LLM_MAX_TOKENS", "").strip()
+    if raw_env:
+        try:
+            resolved = int(raw_env)
+        except ValueError:
+            print(
+                f"[xreadagent] ignoring XREADAGENT_LLM_MAX_TOKENS={raw_env!r}; "
+                "must be an integer",
+                file=sys.stderr,
+                flush=True,
+            )
+    cli_value = getattr(args, "max_tokens", None)
+    if isinstance(cli_value, int):
+        resolved = cli_value
+    if resolved is not None and resolved <= 0:
+        # Non-positive values would silently disable the budget on some
+        # providers; treat as a mis-configuration and fall back to default.
+        print(
+            f"[xreadagent] ignoring non-positive max_tokens={resolved!r}; "
+            "using agent default",
+            file=sys.stderr,
+            flush=True,
+        )
+        return None
+    return resolved
+
+
 __all__ = [
     "add_llm_runtime_flags",
     "resolve_env_override",
     "resolve_headers",
+    "resolve_max_tokens",
 ]

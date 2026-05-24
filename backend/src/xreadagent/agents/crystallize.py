@@ -23,6 +23,7 @@ from typing import Any, Literal, Protocol
 
 from pydantic import ValidationError
 
+from xreadagent.agents._defaults import DEFAULT_AGENT_MAX_TOKENS
 from xreadagent.agents._merge import merge_concept_into_page
 from xreadagent.agents.crystallize_schema import (
     CrystallizeConceptPatch,
@@ -31,7 +32,9 @@ from xreadagent.agents.crystallize_schema import (
 )
 from xreadagent.agents.json_planner import (
     is_nested_list_string_error,
+    is_truncated_output_error,
     make_json_planner,
+    should_retry_with_json_planner,
 )
 from xreadagent.schemas.wiki_pages import ConceptFrontmatter
 from xreadagent.wiki.atomic import atomic_write_text
@@ -96,7 +99,13 @@ class CrystallizeProposal:
 
 
 class CrystallizeAgent:
-    """LLM proposer for ``/crystallize``. Does NOT write."""
+    """LLM proposer for ``/crystallize``. Does NOT write.
+
+    ``max_tokens`` lets callers raise the token budget the underlying chat
+    model uses for its reply. Pass ``None`` (default) to apply
+    :data:`xreadagent.agents._defaults.DEFAULT_AGENT_MAX_TOKENS`; pass an int
+    to override. Read-only after construction via the ``max_tokens`` property.
+    """
 
     def __init__(
         self,
@@ -107,16 +116,23 @@ class CrystallizeAgent:
         planner: CrystallizePlanner | None = None,
         headers: dict[str, str] | None = None,
         planner_method: PlannerMethod = "auto",
+        max_tokens: int | None = None,
     ) -> None:
         self._workspace = workspace
         self._system_prompt = system_prompt or CRYSTALLIZE_SYSTEM_PROMPT
         self._headers: dict[str, str] = dict(headers or {})
         self._planner_method: PlannerMethod = planner_method
+        self._max_tokens: int = (
+            max_tokens if max_tokens is not None else DEFAULT_AGENT_MAX_TOKENS
+        )
         if planner is not None:
             self._planner: CrystallizePlanner = planner
         elif model is not None:
             self._planner = _make_default_planner(
-                model, headers=self._headers, planner_method=planner_method
+                model,
+                headers=self._headers,
+                planner_method=planner_method,
+                max_tokens=self._max_tokens,
             )
         else:
             raise ValueError(
@@ -130,6 +146,11 @@ class CrystallizeAgent:
     @property
     def planner_method(self) -> PlannerMethod:
         return self._planner_method
+
+    @property
+    def max_tokens(self) -> int:
+        """Read-only ``max_tokens`` the default planner uses for chat replies."""
+        return self._max_tokens
 
     async def propose(self, query_archive_path: Path) -> CrystallizeProposal:
         if not query_archive_path.exists():
@@ -171,17 +192,20 @@ def _make_default_planner(
     *,
     headers: dict[str, str] | None = None,
     planner_method: PlannerMethod = "auto",
+    max_tokens: int | None = None,
 ) -> CrystallizePlanner:
     from langchain.chat_models import init_chat_model
 
-    init_kwargs: dict[str, Any] = {}
+    from xreadagent.agents.ingest import _init_chat_model_with_optional_kwargs
+
+    resolved_max_tokens = (
+        max_tokens if max_tokens is not None else DEFAULT_AGENT_MAX_TOKENS
+    )
+    init_kwargs: dict[str, Any] = {"max_tokens": resolved_max_tokens}
     if headers:
         init_kwargs["default_headers"] = dict(headers)
 
-    try:
-        chat = init_chat_model(model, **init_kwargs)
-    except TypeError:
-        chat = init_chat_model(model)
+    chat = _init_chat_model_with_optional_kwargs(init_chat_model, model, init_kwargs)
 
     tool_structured = chat.with_structured_output(CrystallizePlan)
     json_plan = make_json_planner(chat)
@@ -201,11 +225,17 @@ def _make_default_planner(
         try:
             return _invoke_tool(prompt)
         except ValidationError as exc:
-            if not is_nested_list_string_error(exc):
+            if not should_retry_with_json_planner(exc):
                 raise
+            if is_nested_list_string_error(exc):
+                reason = "returned a nested list as a string"
+            elif is_truncated_output_error(exc):
+                reason = "returned no parseable result"
+            else:  # pragma: no cover — should_retry already gated this
+                reason = "produced a retry-able structured-output failure"
             print(
-                "[xreadagent] structured-output (tool) returned a nested list "
-                "as a string; retrying with JSON-mode planner",
+                f"[xreadagent] structured-output (tool) {reason}; "
+                "retrying with JSON-mode planner",
                 file=sys.stderr,
                 flush=True,
             )

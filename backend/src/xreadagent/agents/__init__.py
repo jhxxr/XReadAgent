@@ -6,6 +6,7 @@ talks to LangChain types lives under this package. Import surfaces are kept
 narrow so a future swap of harness only touches files in here.
 """
 
+from xreadagent.agents._defaults import DEFAULT_AGENT_MAX_TOKENS
 from xreadagent.agents.crystallize import (
     CrystallizeAgent,
     CrystallizePlanner,
@@ -52,6 +53,7 @@ __all__ = [
     "CrystallizePlanner",
     "CrystallizeProposal",
     "CrystallizeResult",
+    "DEFAULT_AGENT_MAX_TOKENS",
     "IngestAgent",
     "IngestConceptTouch",
     "IngestPaperPage",

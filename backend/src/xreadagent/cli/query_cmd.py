@@ -7,6 +7,7 @@ import argparse
 import asyncio
 from pathlib import Path
 
+from xreadagent.agents._defaults import DEFAULT_AGENT_MAX_TOKENS
 from xreadagent.agents.query import PlannerMethod, QueryAgent
 from xreadagent.agents.query_orchestrator import answer_query
 from xreadagent.cli.env import ensure_provider_credentials, load_env_files
@@ -14,6 +15,7 @@ from xreadagent.cli.llm_flags import (
     add_llm_runtime_flags,
     resolve_env_override,
     resolve_headers,
+    resolve_max_tokens,
 )
 from xreadagent.cli.output import emit_list, emit_many, error, progress
 from xreadagent.cli.stubs import stub_query_planner, use_stub_planner
@@ -68,14 +70,20 @@ def _build_agent(
     force_stub: bool,
     headers: dict[str, str],
     planner_method: PlannerMethod,
+    max_tokens: int | None,
 ) -> QueryAgent:
     if force_stub or use_stub_planner():
-        return QueryAgent(workspace, planner=stub_query_planner)
+        return QueryAgent(
+            workspace,
+            planner=stub_query_planner,
+            max_tokens=max_tokens,
+        )
     return QueryAgent(
         workspace,
         model=model,
         headers=headers or None,
         planner_method=planner_method,
+        max_tokens=max_tokens,
     )
 
 
@@ -88,6 +96,7 @@ def run(args: argparse.Namespace) -> int:
     planner_method: PlannerMethod = args.planner_method
     headers = resolve_headers(args)
     env_override = resolve_env_override(args)
+    max_tokens = resolve_max_tokens(args)
 
     if not question.strip():
         error("question must be a non-empty string")
@@ -120,6 +129,10 @@ def run(args: argparse.Namespace) -> int:
         progress(f"custom headers: {sorted(headers)}")
     if not using_stub and env_override:
         progress(".env.local override enabled (winning over shell env)")
+    effective_max_tokens = (
+        max_tokens if max_tokens is not None else DEFAULT_AGENT_MAX_TOKENS
+    )
+    progress(f"max_tokens = {effective_max_tokens}")
 
     try:
         agent = _build_agent(
@@ -128,6 +141,7 @@ def run(args: argparse.Namespace) -> int:
             force_stub=force_stub,
             headers=headers,
             planner_method=planner_method,
+            max_tokens=max_tokens,
         )
     except (ValueError, RuntimeError) as exc:
         error(str(exc))

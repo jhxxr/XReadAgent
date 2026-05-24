@@ -23,9 +23,12 @@ from typing import Any, Literal, Protocol
 
 from pydantic import ValidationError
 
+from xreadagent.agents._defaults import DEFAULT_AGENT_MAX_TOKENS
 from xreadagent.agents.json_planner import (
     is_nested_list_string_error,
+    is_truncated_output_error,
     make_json_planner,
+    should_retry_with_json_planner,
 )
 from xreadagent.agents.query_schema import QueryAnswer
 from xreadagent.agents.query_tools import build_query_tools
@@ -68,7 +71,13 @@ class QueryAgentOutcome:
 
 
 class QueryAgent:
-    """Read-only agent that produces a ``QueryAnswer`` for a researcher's question."""
+    """Read-only agent that produces a ``QueryAnswer`` for a researcher's question.
+
+    ``max_tokens`` lets callers raise the token budget the underlying chat
+    model uses for its reply. Pass ``None`` (default) to apply
+    :data:`xreadagent.agents._defaults.DEFAULT_AGENT_MAX_TOKENS`; pass an int
+    to override. Read-only after construction via the ``max_tokens`` property.
+    """
 
     def __init__(
         self,
@@ -80,17 +89,24 @@ class QueryAgent:
         planner: QueryPlanner | None = None,
         headers: dict[str, str] | None = None,
         planner_method: PlannerMethod = "auto",
+        max_tokens: int | None = None,
     ) -> None:
         self._workspace = workspace
         self._system_prompt = system_prompt or QUERY_SYSTEM_PROMPT
         self._max_tool_iterations = max_tool_iterations
         self._headers: dict[str, str] = dict(headers or {})
         self._planner_method: PlannerMethod = planner_method
+        self._max_tokens: int = (
+            max_tokens if max_tokens is not None else DEFAULT_AGENT_MAX_TOKENS
+        )
         if planner is not None:
             self._planner: QueryPlanner = planner
         elif model is not None:
             self._planner = _make_default_planner(
-                model, headers=self._headers, planner_method=planner_method
+                model,
+                headers=self._headers,
+                planner_method=planner_method,
+                max_tokens=self._max_tokens,
             )
         else:
             raise ValueError(
@@ -112,6 +128,11 @@ class QueryAgent:
     @property
     def planner_method(self) -> PlannerMethod:
         return self._planner_method
+
+    @property
+    def max_tokens(self) -> int:
+        """Read-only ``max_tokens`` the default planner uses for chat replies."""
+        return self._max_tokens
 
     async def answer(self, question: str, *, topic: str | None = None) -> QueryAgentOutcome:
         clean_question = question.strip()
@@ -186,23 +207,27 @@ def _make_default_planner(
     *,
     headers: dict[str, str] | None = None,
     planner_method: PlannerMethod = "auto",
+    max_tokens: int | None = None,
 ) -> QueryPlanner:
     """Build a planner that uses LangChain's structured-output API.
 
     Imported lazily so the rest of the package stays importable when the
     LangChain extras are not installed. See ``ingest._make_default_planner``
-    for the headers / planner_method rationale — same proxy-compat story.
+    for the headers / planner_method / max_tokens rationale — same
+    proxy-compat + extended-thinking-budget story.
     """
     from langchain.chat_models import init_chat_model
 
-    init_kwargs: dict[str, Any] = {}
+    from xreadagent.agents.ingest import _init_chat_model_with_optional_kwargs
+
+    resolved_max_tokens = (
+        max_tokens if max_tokens is not None else DEFAULT_AGENT_MAX_TOKENS
+    )
+    init_kwargs: dict[str, Any] = {"max_tokens": resolved_max_tokens}
     if headers:
         init_kwargs["default_headers"] = dict(headers)
 
-    try:
-        chat = init_chat_model(model, **init_kwargs)
-    except TypeError:
-        chat = init_chat_model(model)
+    chat = _init_chat_model_with_optional_kwargs(init_chat_model, model, init_kwargs)
 
     tool_structured = chat.with_structured_output(QueryAnswer)
     json_plan = make_json_planner(chat)
@@ -222,11 +247,17 @@ def _make_default_planner(
         try:
             return _invoke_tool(prompt)
         except ValidationError as exc:
-            if not is_nested_list_string_error(exc):
+            if not should_retry_with_json_planner(exc):
                 raise
+            if is_nested_list_string_error(exc):
+                reason = "returned a nested list as a string"
+            elif is_truncated_output_error(exc):
+                reason = "returned no parseable result"
+            else:  # pragma: no cover — should_retry already gated this
+                reason = "produced a retry-able structured-output failure"
             print(
-                "[xreadagent] structured-output (tool) returned a nested list "
-                "as a string; retrying with JSON-mode planner",
+                f"[xreadagent] structured-output (tool) {reason}; "
+                "retrying with JSON-mode planner",
                 file=sys.stderr,
                 flush=True,
             )
