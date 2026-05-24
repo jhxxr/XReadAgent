@@ -20,6 +20,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Any, Protocol
 
+from xreadagent.agents._merge import merge_concept_into_page
 from xreadagent.agents.ingest_schema import IngestPlan
 from xreadagent.agents.tools import build_ingest_tools
 from xreadagent.schemas.entities import SourceRef
@@ -29,7 +30,6 @@ from xreadagent.wiki.distillation import DistillationPayload, save_distillation
 from xreadagent.wiki.index_regen import write_index
 from xreadagent.wiki.log import WikiConversationLog, WikiLog
 from xreadagent.wiki.pages import (
-    CONCEPT_SECTIONS,
     PAPER_SECTIONS,
     read_page_frontmatter,
     write_concept_page,
@@ -68,120 +68,6 @@ class IngestResult:
     cache_hit: bool = False
 
 
-def _merge_existing_concept(
-    workspace: Workspace,
-    slug: str,
-    *,
-    canonical_name: str,
-    aliases: list[str],
-    contribution: str,
-    related_papers_addition: list[str],
-    related_claims_addition: list[str],
-    paper_slug: str,
-) -> Path:
-    """Append a contribution to an existing concept page, preserving prior content.
-
-    We keep the merge rules narrow on purpose: only aliases dedup + appending the
-    contribution as a new sub-section under ``Summary`` and extending the
-    ``Related Papers`` / ``Related Claims`` bulleted lists. Anything more
-    surgical (rewriting prior claims, etc.) requires ``/crystallize``.
-    """
-    page_path = workspace.concepts_dir / f"{slug}.md"
-    body = page_path.read_text(encoding="utf-8") if page_path.exists() else ""
-    sections = _split_existing_concept(body)
-
-    # Existing aliases come from frontmatter, not the rendered section block.
-    existing_aliases: list[str] = []
-    if page_path.exists():
-        fm = read_page_frontmatter(page_path)
-        raw = fm.get("aliases", [])
-        if isinstance(raw, list):
-            existing_aliases = [str(a) for a in raw]
-    merged_aliases = list(dict.fromkeys([*existing_aliases, *aliases]))
-
-    summary_addition = (
-        f"\n\n### From {paper_slug}\n\n{contribution.strip()}\n" if contribution.strip() else ""
-    )
-    sections["Summary"] = sections.get("Summary", "").rstrip() + summary_addition
-
-    if related_papers_addition:
-        sections["Related Papers"] = _append_bullets(
-            sections.get("Related Papers", ""),
-            [f"[[papers/{slug}|{slug}]]" for slug in related_papers_addition],
-        )
-    if related_claims_addition:
-        sections["Related Claims"] = _append_bullets(
-            sections.get("Related Claims", ""),
-            related_claims_addition,
-        )
-
-    # Frontmatter title: keep the existing one if the page already has it.
-    existing_title = ""
-    if page_path.exists():
-        fm = read_page_frontmatter(page_path)
-        if isinstance(fm.get("title"), str):
-            existing_title = str(fm["title"])
-    frontmatter = ConceptFrontmatter(
-        title=existing_title or canonical_name,
-        aliases=merged_aliases,
-    )
-    return write_concept_page(workspace, slug, frontmatter, sections)
-
-
-def _split_existing_concept(body: str) -> dict[str, str]:
-    """Return ``{section_name: body}`` for the four concept sections.
-
-    Defensive — when the page is missing or malformed, return placeholders so
-    downstream writers still emit a complete page.
-    """
-    if not body.strip():
-        return {name: "" for name in CONCEPT_SECTIONS}
-
-    # Skip frontmatter if present.
-    lines = body.splitlines()
-    start = 0
-    if lines and lines[0].strip() == "---":
-        for idx, line in enumerate(lines[1:], start=1):
-            if line.strip() == "---":
-                start = idx + 1
-                break
-
-    sections: dict[str, str] = {name: "" for name in CONCEPT_SECTIONS}
-    current: str | None = None
-    buffer: list[str] = []
-    for line in lines[start:]:
-        stripped = line.strip()
-        if stripped.startswith("## "):
-            if current is not None:
-                sections[current] = "\n".join(buffer).strip()
-            heading = stripped[3:].strip()
-            current = heading if heading in sections else None
-            buffer = []
-            continue
-        if current is not None:
-            buffer.append(line)
-    if current is not None:
-        sections[current] = "\n".join(buffer).strip()
-    return sections
-
-
-def _append_bullets(existing: str, additions: list[str]) -> str:
-    """Append bullets to an existing markdown bullet list, deduplicating."""
-    existing_lines = [line for line in existing.splitlines() if line.strip()]
-    have = {line.strip() for line in existing_lines if line.strip().startswith("- ")}
-    new_bullets: list[str] = []
-    for item in additions:
-        formatted = f"- {item}".strip()
-        if formatted not in have:
-            new_bullets.append(formatted)
-            have.add(formatted)
-    if not new_bullets:
-        return existing.strip()
-    if existing_lines:
-        return "\n".join([*existing_lines, *new_bullets])
-    return "\n".join(new_bullets)
-
-
 def apply_plan(workspace: Workspace, plan: IngestPlan, source: Source) -> list[str]:
     """Persist ``plan`` to ``workspace``. Returns relative paths that were written.
 
@@ -216,15 +102,15 @@ def apply_plan(workspace: Workspace, plan: IngestPlan, source: Source) -> list[s
 
     for concept in plan.concepts:
         if concept.op == "merge":
-            concept_path = _merge_existing_concept(
+            concept_path = merge_concept_into_page(
                 workspace,
                 concept.slug,
                 canonical_name=concept.canonical_name,
-                aliases=concept.aliases,
-                contribution=concept.summary_section,
-                related_papers_addition=concept.related_papers_addition,
-                related_claims_addition=concept.related_claims_addition,
-                paper_slug=plan.paper.slug,
+                aliases_to_add=concept.aliases,
+                summary_addition=concept.summary_section,
+                summary_section_heading=f"From {plan.paper.slug}",
+                related_papers_to_add=concept.related_papers_addition,
+                related_claims_to_add=concept.related_claims_addition,
             )
         else:
             related_papers_bullets = "\n".join(

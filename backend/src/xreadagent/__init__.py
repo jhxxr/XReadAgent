@@ -2,17 +2,33 @@
 """XReadAgent — scientific research agent with LLM-Wiki memory."""
 
 from xreadagent.agents import (
+    CrystallizeAgent,
+    CrystallizePlan,
+    CrystallizeResult,
     IngestAgent,
     IngestPlan,
     IngestResult,
+    QueryAgent,
+    QueryAnswer,
+    QueryResult,
+    answer_query,
+    apply_crystallize,
     ingest_source,
 )
 
 __all__ = [
+    "CrystallizeAgent",
+    "CrystallizePlan",
+    "CrystallizeResult",
     "IngestAgent",
     "IngestPlan",
     "IngestResult",
+    "QueryAgent",
+    "QueryAnswer",
+    "QueryResult",
     "__version__",
+    "answer_query",
+    "apply_crystallize",
     "ingest_source",
 ]
 
