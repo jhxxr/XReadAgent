@@ -1,0 +1,67 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  redirect,
+} from "@tanstack/react-router";
+
+import { AppShell } from "@/components/shell/app-shell";
+import { PaperIndexRoute } from "@/routes/paper-index";
+import { PaperRoute } from "@/routes/paper";
+import { QueriesRoute } from "@/routes/queries";
+import { WorkspaceRoute } from "@/routes/workspace";
+
+const rootRoute = createRootRoute({
+  component: AppShell,
+});
+
+const indexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/",
+  beforeLoad: () => {
+    // TanStack Router uses `throw redirect(...)` as a control-flow primitive.
+    // eslint-disable-next-line @typescript-eslint/only-throw-error
+    throw redirect({ to: "/workspace" });
+  },
+});
+
+const workspaceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/workspace",
+  component: WorkspaceRoute,
+});
+
+const paperIndexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/paper",
+  component: PaperIndexRoute,
+});
+
+const paperRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/paper/$slug",
+  component: PaperRoute,
+});
+
+const queriesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/queries",
+  component: QueriesRoute,
+});
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  workspaceRoute,
+  paperIndexRoute,
+  paperRoute,
+  queriesRoute,
+]);
+
+export const router = createRouter({ routeTree });
+
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: typeof router;
+  }
+}

@@ -22,6 +22,14 @@ uv run python -m xreadagent.api --port 0
 The sidecar prints `SIDECAR_READY port=<N>` on stdout once uvicorn finishes
 startup. Hit `http://127.0.0.1:<N>/healthz` to confirm.
 
+## Frontend
+
+A React + Vite + Tailwind v4 + shadcn-style UI lives under
+[`frontend/`](frontend/). It runs in browser tab during Phase 1–2 (dev mode)
+and gets wrapped in Electron in Phase 3. See
+[`frontend/README.md`](frontend/README.md) for the two-terminal dev
+quickstart.
+
 ## Architecture
 
 See [`.trellis/tasks/05-22-build-sciresearch-agent-literature-reading-knowledge-base/plan.md`](.trellis/tasks/05-22-build-sciresearch-agent-literature-reading-knowledge-base/plan.md)

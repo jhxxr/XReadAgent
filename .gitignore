@@ -28,6 +28,8 @@ node_modules/
 .next/
 .vite/
 dist-electron/
+coverage/
+*.tsbuildinfo
 
 # OS
 .DS_Store
