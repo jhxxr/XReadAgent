@@ -8,8 +8,8 @@ The following third-party components are planned for inclusion as the project
 matures. Each entry will be filled in with version, upstream URL, and license
 text reference when the dependency is actually wired up.
 
-Currently bundled runtime dependencies (Phase 1A)
--------------------------------------------------
+Currently bundled runtime dependencies (Phase 1A + Phase 2A)
+------------------------------------------------------------
 
 - FastAPI                — MIT License
 - uvicorn                — BSD 3-Clause License
@@ -25,6 +25,12 @@ Currently bundled runtime dependencies (Phase 1A)
 - LangGraph              — MIT License (LangChain AI); pulled in transitively by deepagents.
 - langchain-openai       — MIT License; OpenAI-compatible chat model adapter.
 - langchain-anthropic    — MIT License; Anthropic chat model adapter.
+- BabelDOC               — AGPL-3.0-or-later (funstory-ai); layout-preserving PDF translation engine. Pinned to 0.6.2 because the maintainers declare all APIs internal.
+- PyMuPDF (fitz)         — AGPL-3.0-or-later (Artifex); PDF parsing primitive pulled in by BabelDOC. Aligned with our AGPL distribution per D1.
+- onnxruntime            — MIT License (Microsoft); ONNX inference runtime used by BabelDOC's DocLayout-YOLO layout model.
+- huggingface_hub        — Apache License 2.0; downloads BabelDOC's model assets on first translation.
+- tenacity               — Apache License 2.0; retry primitive used by BabelDOC's HTTP / LLM call paths.
+- DocLayout-YOLO weights — Apache License 2.0 (opendatalab); layout-detection ONNX model BabelDOC downloads at first run (~50 MB).
 
 MinerU is NOT a Python runtime dependency — XReadAgent invokes the optional
 ``mineru`` CLI as a subprocess only when the user has installed it locally.
@@ -33,8 +39,7 @@ Planned dependencies (added in later phases)
 --------------------------------------------
 
 - MinerU (PDF parser, CLI subprocess) — MinerU OSS License (Apache-derived); installed by user out-of-band; wired in Phase 1A.
-- BabelDOC (layout translation)   — AGPL-3.0-or-later; added in Phase 2.
-- DocLayout-YOLO ONNX weights     — see BabelDOC asset bundle license; added in Phase 2.
+- pdfjs-dist (frontend PDF reader) — Apache License 2.0; added in Phase 2B.
 - pydantic-ai                     — MIT License; added in Phase 2.
 - GROBID (optional, Docker side-car) — Apache License 2.0; added in Phase 3.
 - sqlite-vec (optional Tier-2 index) — MIT License; added in Phase 4.

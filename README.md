@@ -67,6 +67,39 @@ The sample paper is a fake fixture for smoke testing only. Drop your own
 PDFs into `workspaces/{ws}/raw/` once MinerU is installed; the router
 selects markitdown / MinerU automatically based on suffix.
 
+## Translation (Phase 2A)
+
+Layout-preserving PDF translation is wired via `babeldoc==0.6.2` in a
+subprocess-isolated worker. Outputs land under `workspaces/{ws}/translations/`
+without touching the wiki or extracts (D4-style isolation).
+
+```sh
+# Translate a paper. Mono + dual PDFs land in translations/.
+uv run xreadagent translate ./workspaces/scratch/raw/paper.pdf \
+    --workspace ./workspaces/scratch \
+    --model anthropic:claude-sonnet-4-6 \
+    --target zh
+```
+
+The CLI prints stage events to stderr (`stage_start parsing`,
+`stage_progress translation 42.5%`, etc.) and the final `key: value` summary
+to stdout (`mono_path: translations/.../...mono.pdf`, `cached: false`).
+Re-running with identical `(source_hash, target_lang, model)` short-circuits
+to the cached PDFs without invoking BabelDOC.
+
+The workspace gains a tenth top-level directory:
+
+```
+{workspace}/translations/
+├── manifest.json              # version + entries[] keyed on (hash, lang, model)
+├── {slug}.mono.pdf            # translated-only PDF
+└── {slug}.dual.pdf            # alternating-page bilingual PDF
+```
+
+BabelDOC (AGPL-3.0) and PyMuPDF (AGPL-3.0) are bundled directly — see
+[NOTICE](NOTICE) for the full attribution. This is aligned with XReadAgent's
+own AGPL-3.0 license (decision D1 in the Phase 0+1 plan).
+
 ## Frontend
 
 A React + Vite + Tailwind v4 + shadcn-style UI lives under

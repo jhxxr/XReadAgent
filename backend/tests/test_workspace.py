@@ -23,6 +23,7 @@ def test_ensure_layout_creates_all_dirs(tmp_path: Path) -> None:
         tmp_path / "wiki" / "papers",
         tmp_path / "wiki" / "concepts",
         tmp_path / "wiki" / "queries",
+        tmp_path / "translations",
     ]
     for directory in expected:
         assert directory.is_dir(), f"expected directory missing: {directory}"
@@ -76,3 +77,15 @@ def test_workspace_paths_match_layout(tmp_path: Path) -> None:
     assert workspace.queries_dir == tmp_path / "wiki" / "queries"
     assert workspace.raw_processed_dir == tmp_path / "raw" / "_processed"
     assert workspace.state_by_source_dir == tmp_path / "state" / "by-source"
+    assert workspace.translations_dir == tmp_path / "translations"
+    assert workspace.translations_manifest_path == tmp_path / "translations" / "manifest.json"
+
+
+def test_init_empty_seeds_translations_manifest(tmp_path: Path) -> None:
+    """``init_empty`` writes an empty translations manifest at v1 shape."""
+    workspace = Workspace.at(tmp_path)
+    workspace.init_empty("Translation Test")
+
+    assert workspace.translations_manifest_path.exists()
+    payload = json.loads(workspace.translations_manifest_path.read_text(encoding="utf-8"))
+    assert payload == {"version": 1, "entries": []}

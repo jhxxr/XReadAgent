@@ -843,3 +843,233 @@ def test_crystallize_agent_max_tokens_property_is_read_only(tmp_path: Path) -> N
     assert agent.max_tokens == 7
     with pytest.raises(AttributeError):
         agent.max_tokens = 1  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# translate subcommand
+# ---------------------------------------------------------------------------
+
+
+def test_translate_subcommand_listed_in_help(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    out = capsys.readouterr().out
+    assert "translate" in out
+
+
+def test_translate_help_documents_flags(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        main(["translate", "--help"])
+    out = capsys.readouterr().out
+    for fragment in (
+        "--target",
+        "--mono-only",
+        "--dual-only",
+        "--both",
+        "--header",
+        "--user-agent",
+        "--planner-method",
+        "--env-override",
+        "--max-tokens",
+    ):
+        assert fragment in out, fragment
+
+
+def test_translate_rejects_missing_source(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    workspace_path = tmp_path / "ws"
+    _run(["init", str(workspace_path), "--title", "X"], capsys=capsys)
+    rc, _, err = _run(
+        [
+            "translate",
+            str(tmp_path / "missing.pdf"),
+            "--workspace",
+            str(workspace_path),
+        ],
+        capsys=capsys,
+    )
+    assert rc == 1
+    assert "does not exist" in err
+
+
+def test_translate_rejects_uninitialised_workspace(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    src = tmp_path / "x.pdf"
+    src.write_bytes(b"%PDF-1.4 fake")
+    rc, _, err = _run(
+        [
+            "translate",
+            str(src),
+            "--workspace",
+            str(tmp_path / "no-init"),
+        ],
+        capsys=capsys,
+    )
+    assert rc == 1
+    assert "not initialized" in err
+
+
+def test_translate_writes_keys_on_finish(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Stub the TranslationService to emit a canned finish event and verify
+    that the CLI prints the expected ``key: value`` stdout lines."""
+    workspace_path = tmp_path / "ws"
+    _run(["init", str(workspace_path), "--title", "X"], capsys=capsys)
+    src = workspace_path / "raw" / "paper.pdf"
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_bytes(b"%PDF-1.4 fake")
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-fake")
+
+    from xreadagent.translation.events import FinishEvent, utc_now_iso
+
+    class _StubService:
+        def __init__(self, workspace: Workspace) -> None:  # noqa: ARG002
+            pass
+
+        def start_translation(self, request: object) -> str:  # noqa: ARG002
+            return "job-abc"
+
+        async def event_stream(self, job_id: str):  # type: ignore[no-untyped-def]
+            assert job_id == "job-abc"
+            yield FinishEvent(
+                mono_path="translations/x.mono.pdf",
+                dual_path="translations/x.dual.pdf",
+                duration_s=1.5,
+                ts=utc_now_iso(),
+            )
+
+        def cancel(self, job_id: str) -> None:  # noqa: ARG002
+            pass
+
+    import xreadagent.cli.translate_cmd as translate_cmd
+
+    monkeypatch.setattr(translate_cmd, "TranslationService", _StubService)
+
+    rc, out, err = _run(
+        [
+            "translate",
+            str(src),
+            "--workspace",
+            str(workspace_path),
+            "--model",
+            "anthropic:claude-fake",
+        ],
+        capsys=capsys,
+    )
+    assert rc == 0, err
+    assert "status: ok" in out
+    assert "cached: false" in out
+    assert "mono_path: translations/x.mono.pdf" in out
+    assert "dual_path: translations/x.dual.pdf" in out
+    assert "duration_s: 1.500" in out
+
+
+def test_translate_cache_hit_emits_cached_true(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    workspace_path = tmp_path / "ws"
+    _run(["init", str(workspace_path), "--title", "X"], capsys=capsys)
+    src = workspace_path / "raw" / "paper.pdf"
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_bytes(b"%PDF-1.4 fake")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-fake")
+
+    from xreadagent.translation.events import FinishEvent, utc_now_iso
+
+    class _StubService:
+        def __init__(self, workspace: Workspace) -> None:  # noqa: ARG002
+            pass
+
+        def start_translation(self, request: object) -> str:  # noqa: ARG002
+            return "job-cache"
+
+        async def event_stream(self, job_id: str):  # type: ignore[no-untyped-def]
+            yield FinishEvent(
+                mono_path="translations/x.mono.pdf",
+                dual_path="translations/x.dual.pdf",
+                duration_s=0.0,
+                cached=True,
+                ts=utc_now_iso(),
+            )
+
+        def cancel(self, job_id: str) -> None:  # noqa: ARG002
+            pass
+
+    import xreadagent.cli.translate_cmd as translate_cmd
+
+    monkeypatch.setattr(translate_cmd, "TranslationService", _StubService)
+
+    rc, out, _err = _run(
+        [
+            "translate",
+            str(src),
+            "--workspace",
+            str(workspace_path),
+            "--model",
+            "anthropic:claude-fake",
+        ],
+        capsys=capsys,
+    )
+    assert rc == 0
+    assert "cached: true" in out
+
+
+def test_translate_error_event_returns_nonzero_exit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    workspace_path = tmp_path / "ws"
+    _run(["init", str(workspace_path), "--title", "X"], capsys=capsys)
+    src = workspace_path / "raw" / "paper.pdf"
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_bytes(b"%PDF-1.4 fake")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-fake")
+
+    from xreadagent.translation.events import ErrorEvent, utc_now_iso
+
+    class _StubService:
+        def __init__(self, workspace: Workspace) -> None:  # noqa: ARG002
+            pass
+
+        def start_translation(self, request: object) -> str:  # noqa: ARG002
+            return "job-err"
+
+        async def event_stream(self, job_id: str):  # type: ignore[no-untyped-def]
+            yield ErrorEvent(
+                stage="parsing",
+                message="boom",
+                ts=utc_now_iso(),
+            )
+
+        def cancel(self, job_id: str) -> None:  # noqa: ARG002
+            pass
+
+    import xreadagent.cli.translate_cmd as translate_cmd
+
+    monkeypatch.setattr(translate_cmd, "TranslationService", _StubService)
+
+    rc, out, _err = _run(
+        [
+            "translate",
+            str(src),
+            "--workspace",
+            str(workspace_path),
+            "--model",
+            "anthropic:claude-fake",
+        ],
+        capsys=capsys,
+    )
+    assert rc == 2
+    assert "status: error" in out
+    assert "stage: parsing" in out
+    assert "message: boom" in out
+

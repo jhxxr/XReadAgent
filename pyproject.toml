@@ -31,6 +31,12 @@ dependencies = [
     "langchain>=1.0,<2.0",
     "langchain-openai>=1.0,<2.0",
     "langchain-anthropic>=1.0,<2.0",
+    # Phase 2: layout-preserving PDF translation. Pinned exact because BabelDOC
+    # declares all APIs internal — version bumps are breaking-change events and
+    # must be gated on a smoke-PDF round-trip test (see plan.md §3).
+    # Pulls in transitively: pymupdf (AGPL), onnxruntime, huggingface_hub,
+    # tenacity, hyperscan (x86-only). License compatibility tracked in NOTICE.
+    "babeldoc==0.6.2",
 ]
 
 [project.optional-dependencies]
@@ -107,6 +113,8 @@ module = [
     "langchain_openai.*",
     "langgraph",
     "langgraph.*",
+    "babeldoc",
+    "babeldoc.*",
 ]
 ignore_missing_imports = true
 
@@ -119,4 +127,5 @@ filterwarnings = [
 ]
 markers = [
     "mineru: requires the MinerU CLI installed (skipped by default)",
+    "babeldoc: requires the BabelDOC engine + ~80MB model assets (skipped by default)",
 ]

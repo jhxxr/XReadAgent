@@ -81,6 +81,16 @@ def _initial_compile_summary() -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
 
 
+def _initial_translations_manifest() -> str:
+    """Seed for ``translations/manifest.json``.
+
+    Stays a stable shape from v1 — see ``translation/manifest.py`` for the
+    Pydantic schema that reads / writes this file.
+    """
+    payload = {"version": 1, "entries": []}
+    return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+
+
 @dataclass(frozen=True)
 class Workspace:
     """Filesystem root + derived canonical paths for one XReadAgent vault."""
@@ -116,6 +126,9 @@ class Workspace:
         _write_if_missing(self.open_questions_md_path, _initial_open_questions_md(clean_title))
         _write_if_missing(self.sources_json_path, _initial_sources_manifest(workspace_id))
         _write_if_missing(self.compile_summary_json_path, _initial_compile_summary())
+        _write_if_missing(
+            self.translations_manifest_path, _initial_translations_manifest()
+        )
 
     # ------------------------------------------------------------------
     # Convenience accessors — keep all path arithmetic in one place so call
@@ -157,6 +170,14 @@ class Workspace:
     @property
     def state_by_source_dir(self) -> Path:
         return self.paths["state_by_source"]
+
+    @property
+    def translations_dir(self) -> Path:
+        return self.paths["translations"]
+
+    @property
+    def translations_manifest_path(self) -> Path:
+        return self.translations_dir / "manifest.json"
 
     @property
     def index_md_path(self) -> Path:

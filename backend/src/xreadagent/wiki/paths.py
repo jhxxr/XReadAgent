@@ -27,6 +27,7 @@ WORKSPACE_LAYOUT: Final[dict[str, str]] = {
     "wiki_papers": "wiki/papers",
     "wiki_concepts": "wiki/concepts",
     "wiki_queries": "wiki/queries",
+    "translations": "translations",
 }
 
 
