@@ -6,7 +6,7 @@
 
 ## Overview
 
-XReadAgent uses **src-layout** with one root package, `xreadagent`, split into six framework-segregated subpackages. The hard rule: **LangChain / deepagents types never leak out of `xreadagent.agents`**. If a function in `xreadagent.wiki` or `xreadagent.pipeline` imports from `langchain*`, that's a layering violation.
+XReadAgent uses **src-layout** with one root package, `xreadagent`, split into seven framework-segregated subpackages. The hard rule: **LangChain / deepagents types never leak out of `xreadagent.agents` (and the Phase 2A carve-out `xreadagent.translation`)**. If a function in `xreadagent.wiki` or `xreadagent.pipeline` imports from `langchain*`, that's a layering violation.
 
 ---
 
@@ -41,12 +41,18 @@ backend/
 │   │   ├── markitdown_converter.py   .docx/.pptx/.xlsx/.html/.epub only (PDFs raise)
 │   │   ├── mineru_converter.py       .pdf via MinerU CLI subprocess
 │   │   └── router.py        convert_source(workspace, raw_path) top-level entry
-│   └── agents/              LangChain + deepagents land. ONLY place LC types are allowed.
-│       ├── _merge.py        Shared concept-merge helper used by ingest + crystallize
-│       ├── ingest_schema.py / ingest.py / orchestrator.py / tools.py
-│       ├── query_schema.py / query.py / query_orchestrator.py / query_tools.py
-│       ├── crystallize_schema.py / crystallize.py
-│       └── prompts/         System prompts as .md files (loaded via importlib.resources)
+│   ├── agents/              LangChain + deepagents land. LC types allowed here.
+│   │   ├── _merge.py        Shared concept-merge helper used by ingest + crystallize
+│   │   ├── ingest_schema.py / ingest.py / orchestrator.py / tools.py
+│   │   ├── query_schema.py / query.py / query_orchestrator.py / query_tools.py
+│   │   ├── crystallize_schema.py / crystallize.py
+│   │   └── prompts/         System prompts as .md files (loaded via importlib.resources)
+│   └── translation/         Phase 2A — BabelDOC layout-preserving translation.
+│       ├── manifest.py      TranslationsIndex / TranslationsManifest (camelCase state JSON).
+│       ├── events.py        StageEvent / ModelDownloadEvent / FinishEvent / ErrorEvent (WS).
+│       ├── babeldoc_adapter.py  Lazy BabelDOC wrapper + make_translator(chat) factory.
+│       ├── worker.py        AsyncTranslationWorker (ProcessPoolExecutor / thread_runner for tests).
+│       └── service.py       TranslationService orchestrator (cache-hit + manifest + logs).
 └── tests/                   Flat. One test file per source module. No deep nesting.
     └── test_*.py
 ```
@@ -55,7 +61,7 @@ backend/
 
 ## Workspace On-Disk Layout
 
-`Workspace` (`wiki/workspace.py`) owns nine directories. The keys are `WORKSPACE_LAYOUT` (`wiki/paths.py`):
+`Workspace` (`wiki/workspace.py`) owns ten directories. The keys are `WORKSPACE_LAYOUT` (`wiki/paths.py`):
 
 ```
 {workspace}/
@@ -66,7 +72,11 @@ backend/
 │   ├── sources.json           SourcesIndex manifest (contentHash for idempotency).
 │   ├── by-source/{slug}.json  Per-source DistillationPayload (entities/claims/relations/tasks).
 │   ├── compile-summary.json   "wiki dirty?" bookkeeping.
-│   └── conversation-log.jsonl JSONL of every event (ingest / query / crystallize / lint).
+│   └── conversation-log.jsonl JSONL of every event (ingest / query / crystallize / lint / translate).
+├── translations/              Phase 2 — layout-preserving PDF translation outputs.
+│   ├── manifest.json          TranslationsManifest (camelCase, keyed on hash+lang+model).
+│   ├── {slug}.mono.pdf        Translated-only PDF.
+│   └── {slug}.dual.pdf        Alternating-page bilingual PDF.
 └── wiki/                      Human-readable. LLM-owned. The compounding artifact.
     ├── index.md               Auto-regenerated catalog (deterministic).
     ├── log.md                 Synthesis-op append-only log (ingest / crystallize / lint).
@@ -123,16 +133,19 @@ Adding a section means: update the page writer, the corresponding schema (`agent
 
 ```
 api/ ──► agents/ ──► wiki/ ◄── pipeline/
-              │         ▲
-              └─► schemas/ (used by everyone)
+              │         ▲           ▲
+              │         │           │
+              └─► schemas/ ─────► translation/
+                  (used by everyone — translation also uses langchain*)
 
-           llm/ (used by api/ for plain chat; NOT used by agents/)
+           llm/ (used by api/ for plain chat; NOT used by agents/ or translation/)
 ```
 
-- `wiki/` and `pipeline/` must NEVER import from `agents/`, `api/`, or `langchain*`.
+- `wiki/` and `pipeline/` must NEVER import from `agents/`, `translation/`, `api/`, or `langchain*`.
 - `agents/` may import from `wiki/`, `pipeline/`, `schemas/`, `langchain*`, `deepagents`.
+- `translation/` may import from `wiki/`, `schemas/`, `langchain*` (Phase 2A carve-out for the BabelDOC translator callable). NOT allowed to import from `agents/` or `pipeline/`.
 - `api/` may import from anywhere.
-- `llm/` is for **plain-chat** domain code (future metadata extractor, glossary builder). The agent layer uses LangChain's `init_chat_model` directly — NOT LLMGateway. Don't bridge them.
+- `llm/` is for **plain-chat** domain code (future metadata extractor, glossary builder). The agent and translation layers use LangChain's `init_chat_model` directly — NOT LLMGateway. Don't bridge them.
 
 ---
 

@@ -217,7 +217,7 @@ import chromadb
 
 ---
 
-### Don't: Leak LangChain types out of `xreadagent.agents`
+### Don't: Leak LangChain types out of `xreadagent.agents` (+ `xreadagent.translation`)
 
 ```python
 # WRONG — violates the layering rule
@@ -226,6 +226,8 @@ from langchain_core.messages import HumanMessage   # NO
 ```
 
 **Why**: The wiki layer must be usable from any agent harness, not just LangChain. If LangChain churns again, we keep the engine. Confining LC types to `agents/` makes the boundary auditable.
+
+**Phase 2A carve-out**: `xreadagent.translation` is also allowed to import `langchain*` because it builds the BabelDOC translator callable on top of a LangChain chat model (D2 from the Phase 2 PRD). The translation package is the *only* other entry point allowed to touch LangChain; `wiki/`, `pipeline/`, `schemas/`, `llm/`, `cli/` (except for re-exports of agent / translation classes) stay framework-agnostic.
 
 ---
 
@@ -277,7 +279,7 @@ When reviewing a PR:
 - [ ] Every new `.py` has the AGPL SPDX header
 - [ ] Every new `BaseModel` extends `_Strict` (or has a documented reason not to)
 - [ ] camelCase vs snake_case matches the schema family (state JSON vs agent plan vs frontmatter)
-- [ ] No imports from `langchain*` outside `xreadagent.agents.*`
+- [ ] No imports from `langchain*` outside `xreadagent.agents.*` and `xreadagent.translation.*`
 - [ ] All state writes route through `wiki/atomic.py` helpers
 - [ ] New agent has a `Planner` Protocol seam + a stub-planner test
 - [ ] No `embed|vector|sqlite-vec|faiss|chroma` strings appear (D8 audit)

@@ -60,8 +60,9 @@ These are the rules a sub-agent must follow without re-litigating:
 | Phase 0 (skeleton) | Complete | `b6a0792` |
 | Phase 1A (pipeline + ingest agent) | Complete | `c8a8a8c` |
 | Phase 1B-1 (query agent + crystallize) | Complete | `0c59055` |
-| Phase 1B-2 (React/Vite/shadcn frontend skeleton) | Next |  |
-| Phase 2 (BabelDOC translation + PDF reader) | Planned |  |
+| Phase 1B-2 (React/Vite/shadcn frontend skeleton) | Complete |  |
+| Phase 2A (BabelDOC translation backend + API + CLI) | Complete | (this dispatch) |
+| Phase 2B (PDF.js reader + Translate dialog) | Next |  |
 | Phase 3 (Lint agent + Electron wrapper + code signing) | Planned |  |
 | Phase 4 (sqlite-vec + MCP + macOS) | Planned |  |
 
