@@ -45,3 +45,36 @@ Built the LLM-Wiki scientific research agent end-to-end. Phase 0 skeleton (FastA
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: Bootstrap guidelines: fill frontend spec from Phase 0+1 code
+
+**Date**: 2026-05-25
+**Task**: Bootstrap guidelines: fill frontend spec from Phase 0+1 code
+**Branch**: `main`
+
+### Summary
+
+Replaced placeholder content across all 7 .trellis/spec/frontend/ files with conventions extracted from the React 19 / Vite 6 / TanStack Router+Query / shadcn renderer. Covered directory layout (three component tiers, @/* alias sync across 3 configs), component patterns (CVA + Radix wrappers + data-slot, function-vs-forwardRef rule, lucide-only icons), hook+Context+Provider template anchored to useTheme, four-tier state model (TanStack Query for server / Context for app-wide / Router for URL / useState for ephemeral — no global store), strict TypeScript rules (noUncheckedIndexedAccess + verbatimModuleSyntax + types/api.ts as Pydantic mirror + ApiError as the only thrown type), and the npm lint/typecheck/test quality gates with Prettier 100-col double-quote. Every guide cites real frontend/src/... files. Bootstrap PRD checkboxes closed; task archived.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f249176` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
