@@ -21,9 +21,9 @@ the rest conversationally.
 
 ## Status (update the checkboxes as you complete each item)
 
-- [ ] Fill backend guidelines
-- [ ] Fill frontend guidelines
-- [ ] Add code examples
+- [x] Fill backend guidelines (Phase 0+1 emerged conventions; see `.trellis/spec/backend/`)
+- [x] Fill frontend guidelines (Phase 0+1 emerged conventions; see `.trellis/spec/frontend/`)
+- [x] Add code examples (each guide cites real `frontend/src/...` and `backend/src/...` files)
 
 ---
 
