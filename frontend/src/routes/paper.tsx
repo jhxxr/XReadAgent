@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { useParams } from "@tanstack/react-router";
+import { Link, useParams } from "@tanstack/react-router";
+import { BookOpenIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function PaperRoute() {
@@ -11,6 +13,12 @@ export function PaperRoute() {
       <div className="flex items-center gap-3">
         <Badge variant="outline">paper</Badge>
         <span className="text-muted-foreground font-mono text-xs">{slug}</span>
+        <Button size="sm" className="ml-auto gap-2" asChild>
+          <Link to="/paper/$slug/read" params={{ slug }}>
+            <BookOpenIcon className="size-3.5" />
+            Read in PDF
+          </Link>
+        </Button>
       </div>
       <Card>
         <CardHeader>

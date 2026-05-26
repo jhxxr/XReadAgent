@@ -8,6 +8,7 @@ import {
 
 import { AppShell } from "@/components/shell/app-shell";
 import { PaperIndexRoute } from "@/routes/paper-index";
+import { PaperReadRoute } from "@/routes/paper-read";
 import { PaperRoute } from "@/routes/paper";
 import { QueriesRoute } from "@/routes/queries";
 import { WorkspaceRoute } from "@/routes/workspace";
@@ -44,6 +45,12 @@ const paperRoute = createRoute({
   component: PaperRoute,
 });
 
+const paperReadRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/paper/$slug/read",
+  component: PaperReadRoute,
+});
+
 const queriesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/queries",
@@ -55,6 +62,7 @@ const routeTree = rootRoute.addChildren([
   workspaceRoute,
   paperIndexRoute,
   paperRoute,
+  paperReadRoute,
   queriesRoute,
 ]);
 
