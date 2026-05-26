@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 2
-- **Last Active**: 2026-05-25
+- **Total Sessions**: 3
+- **Last Active**: 2026-05-26
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~80 | Active |
+| `journal-1.md` | ~117 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 3 | 2026-05-26 | Phase 2 - BabelDOC layout-preserving translation backend + PDF.js reader frontend | `d4405a7`, `d793f68`, `aff50c0`, `22638a8`, `f46c74c` | `main` |
 | 2 | 2026-05-25 | Bootstrap guidelines: fill frontend spec from Phase 0+1 code | `f249176` | `main` |
 | 1 | 2026-05-25 | XReadAgent Phase 0+1 — skeleton through real-LLM verified ingest/query agents + React frontend | `b6a0792`, `c8a8a8c`, `0c59055`, `4c854ce`, `fec80a5`, `deb124d`, `e7d4c35`, `950cfe9` | `main` |
 <!-- @@@/auto:session-history -->

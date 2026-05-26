@@ -78,3 +78,40 @@ Replaced placeholder content across all 7 .trellis/spec/frontend/ files with con
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: Phase 2 - BabelDOC layout-preserving translation backend + PDF.js reader frontend
+
+**Date**: 2026-05-26
+**Task**: Phase 2 - BabelDOC layout-preserving translation backend + PDF.js reader frontend
+**Branch**: `main`
+
+### Summary
+
+Phase 2A: BabelDOC 0.6.2 translation worker in a ProcessPoolExecutor subprocess (spawn start, LLMGateway-backed translator callable, mono+dual outputs under workspaces/{ws}/translations/, idempotent cache keyed on (sourceHash, targetLang, model)). POST /api/translate + WS /ws/jobs/{job_id} streaming 13-stage events (Loading/Parsing/OCR/Layout/Translation/TypeSetting/Rendering/Saving/Finalize plus model_download_*). xreadagent translate CLI mirroring the ingest flag set via shared cli/llm_flags.py + cli/env.py. translations/ promoted to 10th workspace dir with Workspace.translations_dir accessor. Phase 2B: GET /api/translations/manifest + GET /api/workspaces/file (Path.resolve()+relative_to() traversal guard, allowlist of translations/raw/extracts only, deny state/wiki/logs). PDF.js reader at /paper/$slug/read with Original/Dual/Translated tabs defaulting to Dual when a dual PDF exists. TranslateDialog POSTs the job, subscribes the WS stream, renders a model-download overlay then a per-stage checklist, auto-swaps to Dual on finish. pdfjs-dist@5.4.149 pinned with module-level idempotent worker bootstrap. localStorage workspace-path placeholder until a picker exists. Spec captures: backend HTTP file-serving security pattern (7-section code-spec with allowlist rationale), frontend WS subscription pattern (useRef socket + reduce + dual cleanup + websocketFactory injection), localStorage convention refresh now that a second key exists. Final tooling: ruff clean, mypy strict clean (64 backend source files), 287 backend tests + 1 expected mineru skip, pnpm typecheck/lint/test (22/22)/build green.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d4405a7` | (see git log) |
+| `d793f68` | (see git log) |
+| `aff50c0` | (see git log) |
+| `22638a8` | (see git log) |
+| `f46c74c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
