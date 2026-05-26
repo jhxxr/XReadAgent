@@ -44,6 +44,7 @@ Phase 0+1 shipped the renderer skeleton: app shell (`AppShell` + `AppSidebar` + 
 | UI primitives | `@radix-ui/*` (dialog, scroll-area, separator, slot, tabs, tooltip) |
 | Styling | Tailwind 4 (`@tailwindcss/vite`), `tw-animate-css`, `class-variance-authority`, `tailwind-merge`, `clsx` |
 | Icons | `lucide-react` (only) |
+| PDF rendering | `pdfjs-dist` (pinned exact, e.g. `5.4.149`) — loaded only by `components/reader/*` and `lib/pdfjs.ts` (worker URL bootstrap via Vite `?url` suffix) |
 | Toasts | `sonner` (wrapped in `components/ui/toaster.tsx`) |
 | Tests | `vitest`, `jsdom`, `@testing-library/{react,user-event,jest-dom,dom}` |
 | Lint / format | `typescript-eslint` (typed rules), `eslint-plugin-react-hooks`, `eslint-plugin-react-refresh`, `prettier` + `eslint-config-prettier` |

@@ -122,6 +122,86 @@ def validate_wiki_path(workspace_root: Path, candidate: str | Path) -> Path:
 
 ---
 
+### Pattern: HTTP file-serving endpoint security
+
+#### Scope / Trigger
+
+Any FastAPI route that serves bytes from inside a workspace to the browser — currently `GET /api/workspaces/file`, but the pattern is the canonical template for future "serve a workspace artifact" endpoints (extract markdown, raw source PDF, log tails, etc.). Triggered because this is a new cross-layer contract + filesystem boundary, and a leak here is a path-traversal CVE.
+
+#### Signature
+
+```python
+@app.get("/api/workspaces/file")
+async def workspace_file_endpoint(
+    workspacePath: str = Query(...),    # camelCase query param to match wire contract
+    path: str = Query(...),              # workspace-relative path
+) -> FileResponse: ...
+```
+
+#### Contract
+
+| Field | Type | Constraint |
+|---|---|---|
+| `workspacePath` | `str` | absolute path to an existing directory; opened via `Workspace.at(...)` |
+| `path` | `str` | workspace-relative; first segment must be in the allowlist |
+
+Response body: raw file bytes; `Content-Type` is `application/pdf` for `.pdf` else `application/octet-stream`. No JSON envelope — browsers consume this directly via `<embed>` / PDF.js worker.
+
+#### Validation & Error Matrix
+
+| Condition | Status | Detail |
+|---|---|---|
+| `workspacePath` empty / not a directory | 400 | `workspacePath is required` / `... is not an existing directory: <path>` |
+| `path` empty | 400 | `path is required` |
+| `path` absolute or starts with `/` / `\` | 400 | `path must be workspace-relative` |
+| Resolved path escapes the workspace root (`relative_to` fails) | 400 | `path escapes workspace` |
+| First segment of resolved path NOT in `_FILE_ALLOWLIST = {"translations", "raw", "extracts"}` | 403 | `reading from <root> is not permitted; allowed roots: [...]` |
+| Resolved path missing or not a regular file | 404 | `file not found` |
+
+#### Good / Base / Bad
+
+- **Good**: `path=translations/foo.dual.pdf` → 200 + PDF bytes.
+- **Base**: `path=translations/missing.pdf` → 404 (file simply absent).
+- **Bad**:
+  - `path=../../etc/passwd` → 400 (escape).
+  - `path=state/queries.json` → 403 (deny-list root: never expose state/wiki/logs over HTTP).
+  - `path=/abs/path` → 400 (absolute path rejected before resolution).
+
+#### Required tests (`backend/tests/test_workspace_api.py`)
+
+- 200 + correct bytes when file exists in each allowed root.
+- 400 on traversal: `..`, multiple `..`, mixed-slash variants.
+- 400 on absolute path: both Unix `/abs` and Windows `C:\abs`.
+- 403 on every deny-list root (`state`, `wiki`, logs at workspace root).
+- 404 on missing file under an allowed root.
+
+Assertion points: `response.status_code`, the structured `detail` string (test the contract, not the prose — match a stable token like `"escapes workspace"`).
+
+#### Wrong vs Correct
+
+```python
+# Wrong — concatenation + existence check leaks traversal
+target = workspace.root / relative
+if not target.exists():
+    raise HTTPException(404)
+return FileResponse(target)
+# `relative = "../../etc/passwd"` resolves outside root and is served.
+
+# Correct — resolve, contain via relative_to, allowlist root segment
+root = workspace.root.resolve()
+resolved = (root / relative).resolve()
+rel = resolved.relative_to(root)               # raises ValueError on escape
+if rel.parts[0] not in _FILE_ALLOWLIST:        # deny everything else
+    raise HTTPException(403, ...)
+return FileResponse(resolved, media_type=...)
+```
+
+**Why the allowlist is mandatory, not just the traversal guard**: even an in-workspace file can be sensitive (`state/queries.json` contains user queries, `wiki/log.md` contains synthesis history). The pre-defined `_FILE_ALLOWLIST = {"translations", "raw", "extracts"}` is the second layer — only artifacts that are already "user-facing reading material" are reachable over HTTP. Adding a new root requires editing the allowlist, which is the review checkpoint.
+
+> **Warning**: never weaken the allowlist into a deny-list ("allow everything except state/"). New subdirs added in the future would be silently exposed. Allow-list is the secure default.
+
+---
+
 ### Pattern: Auto-repair structured output
 
 `agents/json_planner.py` provides a JSON-mode fallback for the `IngestPlan` / `QueryAnswer` / `CrystallizePlan` structured-output path. It exists because some Anthropic-compatible proxies (notably GLM-5.1 via translation shims like `cch.xinr.de`) emit nested `list[BaseModel]` fields as JSON-encoded strings instead of real lists. Pydantic strict mode (rightly) rejects that.

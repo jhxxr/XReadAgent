@@ -80,7 +80,7 @@ Default rule: state lives **as low in the tree as possible**. Lift only when a s
 
 ## Persistence
 
-- `localStorage` — used only for `xreadagent.theme` so far. Key convention: `xreadagent.<scope>.<name>`. SSR/test-safe read/write (see `theme.tsx` `readStored` / `setTheme`).
+- `localStorage` — used for two keys so far: `xreadagent.theme` (`lib/theme.tsx`) and `xreadagent.workspacePath` (`lib/workspace.ts`, the Phase 2 placeholder until a workspace picker exists). Key convention: every key starts with the `xreadagent.` prefix. Add a sub-namespace when the value belongs to a feature with multiple keys (e.g. future `xreadagent.reader.lastTab`); a flat 2-segment key is fine for top-level app state. Always read/write through a small `lib/<thing>.ts` module — SSR-guard `typeof window === "undefined"`, wrap `getItem` / `setItem` in `try { ... } catch { }` (Safari private mode, `file://` origins, sandboxed iframes), and return a safe fallback. Components must NOT call `localStorage.getItem` directly.
 - `sessionStorage` — not used. Don't add it without a reason.
 - Cookies — none. The sidecar doesn't use auth in v1.
 
