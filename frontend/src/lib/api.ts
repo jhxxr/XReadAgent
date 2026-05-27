@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type {
+  AppSettings,
   HealthzResponse,
   IngestRequest,
   IngestResultResponse,
@@ -11,6 +12,7 @@ import type {
   TranslateRequest,
   TranslateResponse,
   TranslationsManifest,
+  UpdateSettingsRequest,
   WikiPageResponse,
 } from "@/types/api";
 
@@ -213,6 +215,24 @@ export async function postIngest(req: IngestRequest): Promise<IngestResultRespon
 export async function postQuery(req: QueryRequest): Promise<QueryResultResponse> {
   return request<QueryResultResponse>("/query", {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Settings API
+// ---------------------------------------------------------------------------
+
+/** Fetch current application settings. */
+export async function getSettings(): Promise<AppSettings> {
+  return request<AppSettings>("/settings");
+}
+
+/** Update application settings (partial merge). */
+export async function putSettings(req: UpdateSettingsRequest): Promise<AppSettings> {
+  return request<AppSettings>("/settings", {
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   });

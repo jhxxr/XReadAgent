@@ -120,17 +120,23 @@ def _open_workspace(workspace_path: str) -> Workspace:
 
 
 def _resolve_model(model_override: str | None) -> str:
-    """Return the model string from the request body or the environment."""
+    """Return the model string from the request body, settings, or the environment."""
     if model_override and model_override.strip():
         return model_override.strip()
+    # Check persisted settings next.
+    from xreadagent.api.settings import load_settings
+
+    settings_model: str = load_settings().model.strip()
+    if settings_model:
+        return settings_model
     env_model = os.environ.get("XREAD_AGENT_MODEL", "").strip()
     if env_model:
         return env_model
     raise HTTPException(
         status_code=422,
         detail=(
-            "No model specified. Pass `model` in the request body or set "
-            "the XREAD_AGENT_MODEL environment variable."
+            "No model specified. Pass `model` in the request body, configure "
+            "it in settings, or set the XREAD_AGENT_MODEL environment variable."
         ),
     )
 

@@ -202,3 +202,19 @@ export interface QueryResultResponse {
   filesTouched: string[];
   durationS: number;
 }
+
+// ---------------------------------------------------------------------------
+// Settings API types
+// ---------------------------------------------------------------------------
+
+/** Response shape for `GET /api/settings`. */
+export interface AppSettings {
+  model: string;
+  workspacePath: string;
+}
+
+/** Body of `PUT /api/settings` — partial update. */
+export interface UpdateSettingsRequest {
+  model?: string;
+  workspacePath?: string;
+}

@@ -31,6 +31,13 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.websockets import WebSocketState
 
+from xreadagent.api.settings import (
+    AppSettings,
+    UpdateSettingsRequest,
+    load_settings,
+    merge_settings,
+    save_settings,
+)
 from xreadagent.api.wiki_router import wiki_router
 from xreadagent.translation.manifest import TranslationsIndex, TranslationsManifest
 from xreadagent.translation.service import TranslationRequest, TranslationService
@@ -108,6 +115,17 @@ def create_app(
 
     # Include the wiki + ingest/query router.
     app.include_router(wiki_router, prefix="/api")
+
+    @app.get("/api/settings", response_model=AppSettings)
+    async def get_settings() -> AppSettings:
+        return load_settings()
+
+    @app.put("/api/settings", response_model=AppSettings)
+    async def put_settings(req: UpdateSettingsRequest) -> AppSettings:
+        current = load_settings()
+        updated = merge_settings(current, req)
+        save_settings(updated)
+        return updated
 
     @app.get("/healthz")
     async def healthz() -> dict[str, Any]:

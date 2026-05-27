@@ -12,10 +12,12 @@ import {
   getPapers,
   getQueries,
   getQueryPage,
+  getSettings,
   getTranslationsManifest,
   postIngest,
   postQuery,
   postTranslate,
+  putSettings,
 } from "@/lib/api";
 
 describe("api client", () => {
@@ -294,5 +296,47 @@ describe("api client", () => {
     expect(call).toBeDefined();
     const [, init] = call!;
     expect(init?.method).toBe("POST");
+  });
+
+  // ---------------------------------------------------------------------------
+  // Settings API
+  // ---------------------------------------------------------------------------
+
+  it("fetches current settings via GET /settings", async () => {
+    const settings = { model: "openai:gpt-4o", workspacePath: "/tmp/ws" };
+    const mockFetch = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(settings), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const result = await getSettings();
+    expect(result).toEqual(settings);
+    const call = mockFetch.mock.calls[0];
+    expect(call).toBeDefined();
+    const [url, init] = call!;
+    const urlText = typeof url === "string" ? url : url instanceof URL ? url.toString() : "";
+    expect(urlText).toMatch(/\/settings$/);
+    expect(init?.method).toBeUndefined(); // GET has no method set
+  });
+
+  it("updates settings via PUT /settings", async () => {
+    const saved = { model: "anthropic:claude-3-7-sonnet-latest", workspacePath: "/new/ws" };
+    const mockFetch = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(saved), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const result = await putSettings({ model: "anthropic:claude-3-7-sonnet-latest" });
+    expect(result).toEqual(saved);
+    const call = mockFetch.mock.calls[0];
+    expect(call).toBeDefined();
+    const [url, init] = call!;
+    const urlText = typeof url === "string" ? url : url instanceof URL ? url.toString() : "";
+    expect(urlText).toMatch(/\/settings$/);
+    expect(init?.method).toBe("PUT");
   });
 });

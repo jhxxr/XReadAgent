@@ -8,6 +8,7 @@ import { PaperReadRoute } from "@/routes/paper-read";
 import { PaperRoute } from "@/routes/paper";
 import { QueriesRoute } from "@/routes/queries";
 import { QueryDetailRoute } from "@/routes/query-detail";
+import { SettingsRoute } from "@/routes/settings";
 import { WorkspaceRoute } from "@/routes/workspace";
 
 const rootRoute = createRootRoute({
@@ -66,6 +67,12 @@ const queryDetailRoute = createRoute({
   component: QueryDetailRoute,
 });
 
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings",
+  component: SettingsRoute,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   workspaceRoute,
@@ -75,6 +82,7 @@ const routeTree = rootRoute.addChildren([
   conceptRoute,
   queriesRoute,
   queryDetailRoute,
+  settingsRoute,
 ]);
 
 export const router = createRouter({ routeTree });

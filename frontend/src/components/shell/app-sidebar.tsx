@@ -95,13 +95,12 @@ export function AppSidebar() {
           variant="ghost"
           size="sm"
           className="text-muted-foreground w-full justify-start gap-2"
-          disabled
+          asChild
         >
-          <SettingsIcon className="size-4" />
-          Settings
-          <span className="text-muted-foreground/70 ml-auto text-[0.65rem] uppercase tracking-wider">
-            Phase 2
-          </span>
+          <Link to="/settings">
+            <SettingsIcon className="size-4" />
+            Settings
+          </Link>
         </Button>
       </div>
     </aside>
