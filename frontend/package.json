@@ -33,6 +33,8 @@
     "pdfjs-dist": "5.4.149",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "sonner": "^1.7.4",
     "tailwind-merge": "^3.0.2"
   },

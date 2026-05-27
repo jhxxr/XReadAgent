@@ -150,3 +150,50 @@ export type TranslationEvent =
   | ModelDownloadEvent
   | FinishEvent
   | ErrorEvent;
+
+// ---------------------------------------------------------------------------
+// Wiki read API types
+// ---------------------------------------------------------------------------
+
+/** Response shape for `GET /api/wiki/papers/{slug}` (and concept/query equivalents). */
+export interface WikiPageResponse {
+  slug: string;
+  content: string;
+  frontmatter: Record<string, unknown>;
+}
+
+/** Body of `POST /api/ingest`. */
+export interface IngestRequest {
+  workspacePath: string;
+  filePath: string;
+  title?: string;
+  model?: string;
+}
+
+/** Response shape for `POST /api/ingest`. */
+export interface IngestResultResponse {
+  slug: string;
+  title: string;
+  cacheHit: boolean;
+  filesTouched: string[];
+  durationS: number;
+}
+
+/** Body of `POST /api/query`. */
+export interface QueryRequest {
+  workspacePath: string;
+  question: string;
+  topic?: string;
+  model?: string;
+}
+
+/** Response shape for `POST /api/query`. */
+export interface QueryResultResponse {
+  question: string;
+  answer: string;
+  confidence: string;
+  sourcesCited: string[];
+  queryPagePath: string;
+  filesTouched: string[];
+  durationS: number;
+}

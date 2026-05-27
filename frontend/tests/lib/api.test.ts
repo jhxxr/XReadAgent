@@ -5,8 +5,16 @@ import {
   ApiError,
   buildJobEventsWsUrl,
   buildWorkspaceFileUrl,
+  getConcept,
+  getConcepts,
   getHealthz,
+  getPaper,
+  getPapers,
+  getQueries,
+  getQueryPage,
   getTranslationsManifest,
+  postIngest,
+  postQuery,
   postTranslate,
 } from "@/lib/api";
 
@@ -136,5 +144,132 @@ describe("api client", () => {
   it("builds a job-events WS URL keyed on the job id", () => {
     const url = buildJobEventsWsUrl("job-1");
     expect(url).toMatch(/\/ws\/jobs\/job-1$/);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Wiki read API
+  // ---------------------------------------------------------------------------
+
+  it("fetches papers list", async () => {
+    const papers = [
+      { slug: "attention-aaa", title: "Attention Is All You Need", authors: ["Vaswani"], year: 2017, ingestedAt: "2026-05-27T00:00:00Z" },
+    ];
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(papers), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const result = await getPapers("/tmp/ws");
+    expect(result).toEqual(papers);
+    const call = vi.mocked(globalThis.fetch).mock.calls[0];
+    expect(call).toBeDefined();
+    const [url] = call!;
+    const urlText = typeof url === "string" ? url : url instanceof URL ? url.toString() : "";
+    expect(urlText).toMatch(/\/wiki\/papers\?workspacePath=/);
+  });
+
+  it("fetches a single paper page", async () => {
+    const page = { slug: "attention-aaa", content: "# Hello", frontmatter: { title: "Hello" } };
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(page), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const result = await getPaper("/tmp/ws", "attention-aaa");
+    expect(result).toEqual(page);
+  });
+
+  it("fetches concepts list", async () => {
+    const concepts = [
+      { slug: "self-attention", title: "Self-Attention", aliases: [], paperCount: 1 },
+    ];
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(concepts), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const result = await getConcepts("/tmp/ws");
+    expect(result).toEqual(concepts);
+  });
+
+  it("fetches a single concept page", async () => {
+    const page = { slug: "self-attention", content: "# Self-Attention", frontmatter: { title: "Self-Attention" } };
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(page), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const result = await getConcept("/tmp/ws", "self-attention");
+    expect(result).toEqual(page);
+  });
+
+  it("fetches queries list", async () => {
+    const queries = [
+      { id: "general/what-is-attention", question: "What is attention?", topic: "general", archivedAt: "2026-05-27T00:00:00Z" },
+    ];
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(queries), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const result = await getQueries("/tmp/ws");
+    expect(result).toEqual(queries);
+  });
+
+  it("fetches a single query page", async () => {
+    const page = { slug: "general/what-is-attention", content: "# Answer", frontmatter: { question: "What is attention?" } };
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(page), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const result = await getQueryPage("/tmp/ws", "general", "what-is-attention");
+    expect(result).toEqual(page);
+  });
+
+  it("posts /ingest and returns the result", async () => {
+    const ingestResult = { slug: "paper", title: "Paper", cacheHit: false, filesTouched: [], durationS: 1.0 };
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(ingestResult), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const result = await postIngest({
+      workspacePath: "/tmp/ws",
+      filePath: "/tmp/ws/raw/paper.pdf",
+      model: "anthropic:claude-fake",
+    });
+    expect(result).toEqual(ingestResult);
+    const call = vi.mocked(globalThis.fetch).mock.calls[0];
+    expect(call).toBeDefined();
+    const [, init] = call!;
+    expect(init?.method).toBe("POST");
+  });
+
+  it("posts /query and returns the result", async () => {
+    const queryResult = { question: "What?", answer: "A mechanism.", confidence: "high", sourcesCited: [], queryPagePath: "", filesTouched: [], durationS: 0.5 };
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(queryResult), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const result = await postQuery({
+      workspacePath: "/tmp/ws",
+      question: "What?",
+      model: "anthropic:claude-fake",
+    });
+    expect(result).toEqual(queryResult);
+    const call = vi.mocked(globalThis.fetch).mock.calls[0];
+    expect(call).toBeDefined();
+    const [, init] = call!;
+    expect(init?.method).toBe("POST");
   });
 });

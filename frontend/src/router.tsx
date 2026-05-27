@@ -7,10 +7,12 @@ import {
 } from "@tanstack/react-router";
 
 import { AppShell } from "@/components/shell/app-shell";
+import { ConceptRoute } from "@/routes/concept";
 import { PaperIndexRoute } from "@/routes/paper-index";
 import { PaperReadRoute } from "@/routes/paper-read";
 import { PaperRoute } from "@/routes/paper";
 import { QueriesRoute } from "@/routes/queries";
+import { QueryDetailRoute } from "@/routes/query-detail";
 import { WorkspaceRoute } from "@/routes/workspace";
 
 const rootRoute = createRootRoute({
@@ -51,10 +53,22 @@ const paperReadRoute = createRoute({
   component: PaperReadRoute,
 });
 
+const conceptRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/concept/$slug",
+  component: ConceptRoute,
+});
+
 const queriesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/queries",
   component: QueriesRoute,
+});
+
+const queryDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/query/$topic/$slug",
+  component: QueryDetailRoute,
 });
 
 const routeTree = rootRoute.addChildren([
@@ -63,7 +77,9 @@ const routeTree = rootRoute.addChildren([
   paperIndexRoute,
   paperRoute,
   paperReadRoute,
+  conceptRoute,
   queriesRoute,
+  queryDetailRoute,
 ]);
 
 export const router = createRouter({ routeTree });

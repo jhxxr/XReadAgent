@@ -1,9 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type {
   HealthzResponse,
+  IngestRequest,
+  IngestResultResponse,
+  PaperSummary,
+  ConceptSummary,
+  QuerySummary,
+  QueryRequest,
+  QueryResultResponse,
   TranslateRequest,
   TranslateResponse,
   TranslationsManifest,
+  WikiPageResponse,
 } from "@/types/api";
 
 /**
@@ -131,4 +139,96 @@ export async function postTranslate(req: TranslateRequest): Promise<TranslateRes
 /** Build the WS URL for streaming events of `jobId`. */
 export function buildJobEventsWsUrl(jobId: string): string {
   return `${wsBase}/ws/jobs/${encodeURIComponent(jobId)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Wiki read API
+// ---------------------------------------------------------------------------
+
+/** Fetch all papers for a workspace. */
+export async function getPapers(workspacePath: string): Promise<PaperSummary[]> {
+  return request<PaperSummary[]>(
+    `/wiki/papers?workspacePath=${encodeURIComponent(workspacePath)}`,
+  );
+}
+
+/** Fetch a single paper page by slug. */
+export async function getPaper(
+  workspacePath: string,
+  slug: string,
+): Promise<WikiPageResponse> {
+  return request<WikiPageResponse>(
+    `/wiki/papers/${encodeURIComponent(slug)}?workspacePath=${encodeURIComponent(workspacePath)}`,
+  );
+}
+
+/** Fetch all concepts for a workspace. */
+export async function getConcepts(workspacePath: string): Promise<ConceptSummary[]> {
+  return request<ConceptSummary[]>(
+    `/wiki/concepts?workspacePath=${encodeURIComponent(workspacePath)}`,
+  );
+}
+
+/** Fetch a single concept page by slug. */
+export async function getConcept(
+  workspacePath: string,
+  slug: string,
+): Promise<WikiPageResponse> {
+  return request<WikiPageResponse>(
+    `/wiki/concepts/${encodeURIComponent(slug)}?workspacePath=${encodeURIComponent(workspacePath)}`,
+  );
+}
+
+/** Fetch all archived queries for a workspace. */
+export async function getQueries(workspacePath: string): Promise<QuerySummary[]> {
+  return request<QuerySummary[]>(
+    `/wiki/queries?workspacePath=${encodeURIComponent(workspacePath)}`,
+  );
+}
+
+/** Fetch a single query page by topic and slug. */
+export async function getQueryPage(
+  workspacePath: string,
+  topic: string,
+  slug: string,
+): Promise<WikiPageResponse> {
+  return request<WikiPageResponse>(
+    `/wiki/queries/${encodeURIComponent(topic)}/${encodeURIComponent(slug)}?workspacePath=${encodeURIComponent(workspacePath)}`,
+  );
+}
+
+/** Fetch the wiki index page content. */
+export async function getWikiIndex(
+  workspacePath: string,
+): Promise<{ content: string }> {
+  return request<{ content: string }>(
+    `/wiki/index?workspacePath=${encodeURIComponent(workspacePath)}`,
+  );
+}
+
+/** Fetch the wiki overview page content. */
+export async function getWikiOverview(
+  workspacePath: string,
+): Promise<{ content: string }> {
+  return request<{ content: string }>(
+    `/wiki/overview?workspacePath=${encodeURIComponent(workspacePath)}`,
+  );
+}
+
+/** Ingest a document into the wiki. */
+export async function postIngest(req: IngestRequest): Promise<IngestResultResponse> {
+  return request<IngestResultResponse>("/ingest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+/** Answer a question using the wiki knowledge base. */
+export async function postQuery(req: QueryRequest): Promise<QueryResultResponse> {
+  return request<QueryResultResponse>("/query", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
 }
