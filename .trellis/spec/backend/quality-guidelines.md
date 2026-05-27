@@ -268,7 +268,7 @@ for source in sources:
 - **Idempotency proofs**: cache-hit, re-ingest, deterministic regeneration each get a dedicated test.
 - **Isolation contracts**: byte-digest tests for queries (Phase 1B) and the same pattern for future read-only agents (Lint, Phase 3).
 - **Mock at the right level**: agent tests inject stub planners; converter tests mock the subprocess. Tools that talk to the filesystem use real `tmp_path` fixtures — don't mock the FS.
-- **Heavy deps are opt-in**: tests requiring a real MinerU install live behind `@pytest.mark.mineru`. Real-LLM smoke tests will live behind `@pytest.mark.integration` (not yet introduced).
+- **Heavy deps are opt-in**: tests requiring a real MinerU install live behind `@pytest.mark.mineru`; the BabelDOC engine smoke test lives behind `@pytest.mark.babeldoc` under `backend/tests/integration/`. Default `pytest backend/` skips both. See `backend/tests/README.md` for the full marker table + opt-in commands. Real-LLM smoke tests will live behind `@pytest.mark.integration` (not yet introduced).
 
 ---
 

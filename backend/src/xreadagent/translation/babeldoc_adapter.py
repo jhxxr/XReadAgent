@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Pure-Python wrapper around BabelDOC's ``do_translate_async_stream``.
+"""Pure-Python wrapper around BabelDOC's ``async_translate``.
 
 This module is the boundary between our event protocol (``events.py``) and
 BabelDOC's own emitted dicts. The actual ``babeldoc`` package is imported
@@ -12,7 +12,7 @@ Architecture:
 
     BabelDOC                   our adapter                     our protocol
     --------                   -----------                     ------------
-    do_translate_async_stream  iter_translation_events()       TranslationEvent
+    async_translate            iter_translation_events()       TranslationEvent
     (yields dicts)             yields StageEvent/Finish/Error  (serialized to WS)
 
 The adapter also exposes :func:`make_translator` — a factory that turns a
@@ -22,6 +22,22 @@ only place LangChain leaks into ``xreadagent.translation`` (the layering
 rule is explicitly relaxed in :file:`.trellis/spec/backend/quality-guidelines.md`
 for this package — translation needs a chat client just like the agent
 layer does).
+
+Real-time streaming: ``_build_babeldoc_source`` runs BabelDOC's async
+generator inside a dedicated thread that owns its own asyncio loop, pushing
+each yielded dict onto a synchronous ``queue.Queue`` as it arrives. The
+outer iterator pulls events from the queue without ever calling
+``asyncio.run`` itself, so the worker subprocess sees each event within
+milliseconds of BabelDOC emitting it (rather than after the whole pipeline
+finishes, as the prior buffered implementation did).
+
+Warmup: before kicking off the translation we call
+``babeldoc.format.pdf.high_level.init()`` (cheap, creates cache dir) and
+``babeldoc.assets.assets.async_warmup()`` (downloads ~80 MB of ONNX + fonts
+on first run; idempotent on subsequent runs). During warmup we install a
+scoped monkey-patch on ``babeldoc.assets.assets.httpx.AsyncClient`` so each
+file download surfaces as ``model_download_*`` events on the same queue.
+The patch is restored in a try/finally so it cannot leak.
 """
 
 from __future__ import annotations
@@ -375,9 +391,9 @@ def iter_translation_events(
     ``raw_event_source`` exists for tests — when provided, the adapter
     consumes that iterator instead of importing / invoking BabelDOC. The
     production code path imports BabelDOC lazily and drives
-    ``do_translate_async_stream`` through ``asyncio.run`` to keep this
-    function synchronous (it runs inside the subprocess worker, not the
-    sidecar event loop).
+    ``async_translate`` from a background-thread asyncio loop via
+    :func:`_build_babeldoc_source`, which exposes a synchronous iterator
+    that the subprocess worker can pump onto a multiprocessing queue.
     """
     start = time.monotonic()
     last_stage: StageName | None = None
@@ -431,29 +447,33 @@ async def aiter_translation_events(
     over a multiprocessing queue.
     """
     # Lazy import keeps the worker subprocess as the only place BabelDOC is
-    # actually loaded.
+    # actually loaded. ``async_translate`` is BabelDOC 0.6.2's actual streaming
+    # entry point — earlier draft code referenced a ``do_translate_async_stream``
+    # symbol that does not exist in 0.6.2.
     from babeldoc.format.pdf.high_level import (
-        do_translate_async_stream,
+        async_translate,
     )
-    from babeldoc.format.pdf.translation_config import (
-        TranslationConfig,
+    from babeldoc.format.pdf.high_level import (
+        init as _babeldoc_init,
     )
 
-    bcfg = TranslationConfig(
-        input_file=str(config.input_path),
-        output_dir=str(config.output_dir),
-        lang_in=config.source_lang,
-        lang_out=config.target_lang,
-        no_mono=config.no_mono,
-        no_dual=config.no_dual,
-        translator=translator,
-        **config.extra,
-    )
+    _babeldoc_init()
     last_stage: StageName | None = None
     start = time.monotonic()
     finish_seen = False
     try:
-        async for raw in do_translate_async_stream(bcfg):
+        # Async path: warmup + stream are both async, so we run them inline.
+        async for raw in _async_warmup_with_progress():
+            event, last_stage = _convert_event(raw, last_stage=last_stage)
+            if event is None:
+                continue
+            yield event
+            if isinstance(event, ErrorEvent):
+                return
+        # Build the TranslationConfig AFTER warmup so the ONNX model file is
+        # on disk when ``DocLayoutModel.load_onnx()`` reads it.
+        bcfg = _build_translation_config(config, translator)
+        async for raw in async_translate(bcfg):
             event, last_stage = _convert_event(raw, last_stage=last_stage)
             if event is None:
                 continue
@@ -483,52 +503,316 @@ async def aiter_translation_events(
         )
 
 
+def _build_translation_config(
+    config: AdapterConfig,
+    translator: Callable[[str, str, str], str],
+) -> Any:
+    """Construct a real ``babeldoc.format.pdf.translation_config.TranslationConfig``.
+
+    Wraps the user's ``Callable[[str, str, str], str]`` into a
+    :class:`BaseTranslator` subclass (BabelDOC's actual config type) and
+    loads the ONNX layout model from disk via ``DocLayoutModel.load_onnx()``
+    — both required arguments of ``TranslationConfig.__init__``.
+
+    Must be called AFTER warmup so the ONNX model file is on disk when
+    ``load_onnx()`` looks for it.
+    """
+    from babeldoc.docvision.base_doclayout import DocLayoutModel
+    from babeldoc.format.pdf.translation_config import TranslationConfig
+
+    layout_model = DocLayoutModel.load_onnx()
+    bcfg_translator = _make_base_translator(
+        translator, config.source_lang, config.target_lang
+    )
+    return TranslationConfig(
+        translator=bcfg_translator,
+        input_file=str(config.input_path),
+        lang_in=config.source_lang,
+        lang_out=config.target_lang,
+        doc_layout_model=layout_model,
+        output_dir=str(config.output_dir),
+        no_mono=config.no_mono,
+        no_dual=config.no_dual,
+        **config.extra,
+    )
+
+
+def _make_base_translator(
+    callback: Callable[[str, str, str], str],
+    lang_in: str,
+    lang_out: str,
+) -> Any:
+    """Adapt a ``Callable[[str, str, str], str]`` into BabelDOC's ``BaseTranslator``.
+
+    BabelDOC 0.6.2 requires the ``translator`` config slot to be a
+    :class:`babeldoc.translator.translator.BaseTranslator` instance (not a
+    plain callable). We construct the wrapper class lazily inside this
+    function so importing the adapter module does not pull babeldoc; the
+    class is fresh per call which keeps the rest of the adapter framework-
+    agnostic at import time.
+
+    Callers (worker subprocess, integration test) only need to provide a
+    ``def translate(text, src, dst) -> str``; they should not have to know
+    about BabelDOC's class hierarchy or its cache plumbing.
+    """
+    from babeldoc.translator.translator import BaseTranslator
+
+    class _CallableTranslator(BaseTranslator):  # type: ignore[misc]
+        # ``name`` must be ≤ 20 chars — see BabelDOC's TranslationCache schema.
+        name = "xreadagent"
+
+        def __init__(self) -> None:
+            super().__init__(lang_in, lang_out, ignore_cache=True)
+            self._callback = callback
+            # ``model`` is referenced by BaseTranslator.__str__; pin a stable
+            # constant so logs don't crash.
+            self.model = "callable"
+
+        def do_translate(self, text: str, rate_limit_params: Any = None) -> str:
+            _ = rate_limit_params
+            return self._callback(text, self.lang_in, self.lang_out)
+
+        def do_llm_translate(self, text: str, rate_limit_params: Any = None) -> str:
+            return self.do_translate(text, rate_limit_params)
+
+    return _CallableTranslator()
+
+
 def _build_babeldoc_source(
     config: AdapterConfig,
     translator: Callable[[str, str, str], str],
 ) -> Iterator[dict[str, Any]]:
-    """Synchronous bridge to BabelDOC's async generator.
+    """Stream BabelDOC events from a background-thread asyncio loop.
 
-    Runs the async stream to completion inside the calling subprocess. The
-    BabelDOC API is async-only, so we drive it through ``asyncio.run`` and
-    return a synchronous iterator the worker can pump into a
-    ``multiprocessing.Queue`` one dict at a time.
+    BabelDOC's API is async-only, so we drive ``async_translate`` from a
+    daemon thread that owns its own ``asyncio.new_event_loop()`` and push
+    each yielded dict onto a ``queue.Queue`` as it arrives. The outer
+    iterator drains the queue synchronously, which means the worker
+    subprocess sees each event within milliseconds of BabelDOC emitting
+    it.
 
-    Implementation detail: we collect dicts into a buffer rather than
-    yielding from inside the async loop because mixing async + sync
-    generator semantics across the asyncio bridge is fragile under pytest's
-    event-loop policy. This is fine — BabelDOC's stream has tens of events
-    per page, not millions.
+    The loop is **private to the thread** — pytest's event-loop policy is
+    not affected because we never call ``asyncio.run`` from the caller's
+    context, and the loop is closed in a finally before the thread exits.
+
+    Warmup runs first (downloading ~80 MB of assets on first translate; a
+    no-op on subsequent runs because BabelDOC caches them in
+    ``~/.cache/babeldoc/``). During warmup we install a scoped monkey-patch
+    on ``babeldoc.assets.assets.httpx.AsyncClient`` so each file download
+    surfaces as ``model_download_*`` events on the same queue. The patch is
+    restored on exit so it never leaks across translations or tests.
+
+    Order matters: ``init()`` → warmup (assets land on disk) → load ONNX
+    layout model → build ``TranslationConfig`` → ``async_translate``.
+    Constructing the config before warmup would crash because
+    ``DocLayoutModel.load_onnx()`` reads the file warmup just downloaded.
     """
-    import asyncio
+    import queue as _queue
+    import threading as _threading
 
     from babeldoc.format.pdf.high_level import (
-        do_translate_async_stream,
-    )
-    from babeldoc.format.pdf.translation_config import (
-        TranslationConfig,
+        init as _babeldoc_init,
     )
 
-    bcfg = TranslationConfig(
-        input_file=str(config.input_path),
-        output_dir=str(config.output_dir),
-        lang_in=config.source_lang,
-        lang_out=config.target_lang,
-        no_mono=config.no_mono,
-        no_dual=config.no_dual,
-        translator=translator,
-        **config.extra,
-    )
+    # Cheap (creates the cache dir if missing). Idempotent across runs.
+    _babeldoc_init()
 
-    async def _collect() -> list[dict[str, Any]]:
-        buffer: list[dict[str, Any]] = []
-        async for raw in do_translate_async_stream(bcfg):
+    event_queue: _queue.Queue[Any] = _queue.Queue()
+
+    def _on_progress(payload: dict[str, Any]) -> None:
+        event_queue.put(payload)
+
+    def _runner() -> None:
+        import asyncio as _asyncio
+
+        loop = _asyncio.new_event_loop()
+        _asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(_drive(config, translator, _on_progress))
+        finally:
+            try:
+                loop.close()
+            finally:
+                event_queue.put(_THREAD_DONE)
+
+    thread = _threading.Thread(target=_runner, daemon=True, name="babeldoc-stream")
+    thread.start()
+
+    while True:
+        item = event_queue.get()
+        if item is _THREAD_DONE:
+            return
+        if isinstance(item, dict):
+            yield item
+
+
+# Sentinel placed on the queue when the worker thread is done. Using a
+# module-level object means ``is``-comparison is safe and uniquely identifies
+# the end-of-stream condition without colliding with any dict payload.
+_THREAD_DONE = object()
+
+
+async def _drive(
+    config: AdapterConfig,
+    translator: Callable[[str, str, str], str],
+    on_progress: Callable[[dict[str, Any]], None],
+) -> None:
+    """Run warmup → build config → translate, pushing each dict to ``on_progress``.
+
+    Runs inside the background thread's asyncio loop. Any exception is
+    caught and surfaced as an ``error`` event so the consumer sees a
+    terminal state instead of a silent thread death.
+    """
+    from babeldoc.format.pdf.high_level import async_translate
+
+    try:
+        async for raw in _async_warmup_with_progress():
+            on_progress(raw)
+        bcfg = _build_translation_config(config, translator)
+        async for raw in async_translate(bcfg):
             if isinstance(raw, dict):
-                buffer.append(raw)
-        return buffer
+                on_progress(raw)
+    except Exception as exc:  # noqa: BLE001 — error boundary inside the thread
+        on_progress(
+            {
+                "type": "error",
+                "error": f"{type(exc).__name__}: {exc}",
+                "details": _truncate(traceback.format_exc(), _TRACEBACK_MAX_CHARS),
+            }
+        )
 
-    events = asyncio.run(_collect())
-    return iter(events)
+
+async def _async_warmup_with_progress() -> AsyncIterator[dict[str, Any]]:
+    """Run BabelDOC's ``async_warmup`` with per-file download events.
+
+    Yields raw BabelDOC-shaped dicts (``model_download_start`` /
+    ``_progress`` / ``_done``) as each individual asset download begins
+    and completes, so the caller can push them onto the same queue as
+    stage events without waiting for the whole warmup to finish.
+
+    Emits no per-file events when the assets are already on disk
+    (BabelDOC's own cache short-circuits the httpx calls entirely — the
+    monkey-patched client is never instantiated for those paths).
+
+    Implementation: monkey-patches ``babeldoc.assets.assets.httpx.AsyncClient``
+    with a thin subclass that records every ``.get()`` call via an
+    ``asyncio.Queue``. The patch is scoped — installed before
+    ``async_warmup()`` runs and unconditionally restored in a try/finally
+    so it can't leak into other code paths.
+
+    BabelDOC 0.6.2 does **not** stream chunks — it calls
+    ``await client.get(url)`` and then reads ``response.content`` in a
+    single blocking step. Per-byte chunk progress is therefore not
+    achievable without forking BabelDOC; we emit one ``_start`` per file
+    request and one ``_done`` per response so the UI sees each download
+    individually ticking. ``bytes_total`` comes from the response's
+    ``content-length`` header when present.
+    """
+    import asyncio as _asyncio
+
+    from babeldoc.assets import assets as _assets
+
+    event_q: _asyncio.Queue[dict[str, Any] | object] = _asyncio.Queue()
+    _WARMUP_DONE = object()
+
+    original_client_cls = _assets.httpx.AsyncClient
+
+    class _InstrumentedClient(original_client_cls):  # type: ignore[misc, valid-type]
+        async def get(self, url: Any, *args: Any, **kwargs: Any) -> Any:
+            asset_name = _asset_name_from_url(url)
+            await event_q.put(
+                {
+                    "type": "model_download_start",
+                    "asset": asset_name,
+                }
+            )
+            response = await super().get(url, *args, **kwargs)
+            try:
+                content_length = response.headers.get("content-length")
+                bytes_total = int(content_length) if content_length else None
+            except (TypeError, ValueError):
+                bytes_total = None
+            try:
+                bytes_downloaded = len(response.content)
+            except Exception:  # noqa: BLE001
+                bytes_downloaded = None
+            await event_q.put(
+                {
+                    "type": "model_download_progress",
+                    "asset": asset_name,
+                    "bytes_downloaded": bytes_downloaded,
+                    "bytes_total": bytes_total,
+                }
+            )
+            await event_q.put(
+                {
+                    "type": "model_download_done",
+                    "asset": asset_name,
+                }
+            )
+            return response
+
+    yield {"type": "model_download_start", "asset": "engine assets"}
+
+    _assets.httpx.AsyncClient = _InstrumentedClient
+
+    async def _runner() -> None:
+        try:
+            await _assets.async_warmup()
+        except Exception as exc:  # noqa: BLE001
+            await event_q.put(
+                {
+                    "type": "error",
+                    "error": f"warmup failed: {type(exc).__name__}: {exc}",
+                    "details": _truncate(
+                        traceback.format_exc(), _TRACEBACK_MAX_CHARS
+                    ),
+                }
+            )
+        finally:
+            await event_q.put(_WARMUP_DONE)
+
+    task = _asyncio.create_task(_runner())
+    saw_error = False
+    try:
+        while True:
+            item = await event_q.get()
+            if item is _WARMUP_DONE:
+                break
+            assert isinstance(item, dict)
+            if item.get("type") == "error":
+                saw_error = True
+            yield item
+    finally:
+        _assets.httpx.AsyncClient = original_client_cls
+        # Ensure the runner is fully awaited so any pending exception
+        # surfaces here rather than leaking as an "unretrieved task".
+        try:
+            await task
+        except Exception:  # noqa: BLE001 — already surfaced via event queue
+            pass
+
+    if not saw_error:
+        yield {"type": "model_download_done", "asset": "engine assets"}
+
+
+def _asset_name_from_url(url: Any) -> str:
+    """Pick a stable display name out of an httpx URL.
+
+    Used by the warmup wrapper to label each ``model_download_*`` event.
+    Falls back to ``"asset"`` for shapes we can't introspect — better a
+    constant than a crash inside the monkey-patch.
+    """
+    try:
+        text = str(url)
+    except Exception:  # noqa: BLE001
+        return "asset"
+    if not text:
+        return "asset"
+    # Strip query string, keep last path segment.
+    cleaned = text.split("?", 1)[0]
+    segment = cleaned.rsplit("/", 1)[-1]
+    return segment or "asset"
 
 
 __all__ = [
