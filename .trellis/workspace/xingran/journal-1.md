@@ -183,3 +183,36 @@ Added wiki read API (papers/concepts/queries/index/overview), ingest/query HTTP 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: Copilot Sidebar: non-modal slide-in panel with ask/answer and evidence
+
+**Date**: 2026-05-27
+**Task**: Copilot Sidebar: non-modal slide-in panel with ask/answer and evidence
+**Branch**: `main`
+
+### Summary
+
+Replaced CopilotSidebar placeholder with functional non-modal slide-in panel. Users can ask questions about their wiki, get answers rendered as markdown with wiki-link support, and see cited evidence with source links, quotes, and confidence badges. Uses existing POST /api/query endpoint, TanStack Query mutations, WikiMarkdown component. 5 new frontend tests.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2b0bf74` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
