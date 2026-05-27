@@ -13,11 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { ApiError, buildJobEventsWsUrl, postTranslate } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type {
-  FinishEvent,
-  StageName,
-  TranslationEvent,
-} from "@/types/api";
+import type { FinishEvent, StageName, TranslationEvent } from "@/types/api";
 
 /** Stages we render in the per-stage progress checklist, in pipeline order. */
 const STAGE_ORDER: readonly StageName[] = [
@@ -63,13 +59,7 @@ export interface TranslateDialogProps {
 }
 
 interface RunState {
-  status:
-    | "idle"
-    | "starting"
-    | "downloading"
-    | "running"
-    | "finished"
-    | "errored";
+  status: "idle" | "starting" | "downloading" | "running" | "finished" | "errored";
   jobId: string | null;
   /** Per-stage status; only stages we've heard about appear here. */
   stages: Partial<Record<StageName, StageStatus>>;
@@ -187,9 +177,7 @@ export function TranslateDialog({
   }, [dual, mono, model, onFinish, sourcePath, target, websocketFactory, workspacePath]);
 
   const busy =
-    run.status === "starting" ||
-    run.status === "downloading" ||
-    run.status === "running";
+    run.status === "starting" || run.status === "downloading" || run.status === "running";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -197,8 +185,8 @@ export function TranslateDialog({
         <DialogHeader>
           <DialogTitle>Translate paper</DialogTitle>
           <DialogDescription>
-            Hand the original PDF off to BabelDOC. The output preserves
-            layout — figures, tables and equations stay in place.
+            Hand the original PDF off to BabelDOC. The output preserves layout — figures, tables and
+            equations stay in place.
           </DialogDescription>
         </DialogHeader>
 
@@ -404,8 +392,7 @@ function StageChecklist({ stages, activeStage, percent }: StageChecklistProps) {
       )}
       <ul className="flex flex-col gap-1 text-xs">
         {STAGE_ORDER.map((name) => {
-          const status: StageStatus =
-            stages[name] ?? (name === activeStage ? "active" : "pending");
+          const status: StageStatus = stages[name] ?? (name === activeStage ? "active" : "pending");
           return (
             <li
               key={name}

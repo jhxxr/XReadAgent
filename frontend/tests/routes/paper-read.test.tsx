@@ -158,7 +158,8 @@ describe("PaperReadRoute", () => {
     });
     // Dual + Translated are disabled when no entry exists.
     const dual = screen.getByRole("tab", { name: /^dual$/i });
-    expect(dual.hasAttribute("disabled") || dual.getAttribute("aria-disabled") === "true")
-      .toBe(true);
+    expect(dual.hasAttribute("disabled") || dual.getAttribute("aria-disabled") === "true").toBe(
+      true,
+    );
   });
 });

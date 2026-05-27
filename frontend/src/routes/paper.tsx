@@ -88,17 +88,11 @@ export function PaperRoute() {
         <CardHeader className="pb-4">
           <h1 className="text-xl font-bold">{title}</h1>
           {authors.length > 0 && (
-            <p className="text-muted-foreground text-sm">
-              {authors.join(", ")}
-            </p>
+            <p className="text-muted-foreground text-sm">{authors.join(", ")}</p>
           )}
           <div className="flex items-center gap-2 pt-1">
             {year && <Badge variant="secondary">{year}</Badge>}
-            {source && (
-              <span className="text-muted-foreground text-xs">
-                {source}
-              </span>
-            )}
+            {source && <span className="text-muted-foreground text-xs">{source}</span>}
           </div>
         </CardHeader>
       </Card>

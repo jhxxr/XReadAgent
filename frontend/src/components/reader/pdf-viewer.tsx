@@ -69,8 +69,7 @@ export function PdfViewer({ url, mode, className, pageWidth = 720 }: PdfViewerPr
         setState({ status: "ready", doc, error: null });
       } catch (cause) {
         if (cancelled) return;
-        const message =
-          cause instanceof Error ? cause.message : "Failed to load PDF";
+        const message = cause instanceof Error ? cause.message : "Failed to load PDF";
         setState({ status: "error", doc: null, error: message });
       }
     }
@@ -117,14 +116,7 @@ export function PdfViewer({ url, mode, className, pageWidth = 720 }: PdfViewerPr
     );
   }
 
-  return (
-    <PdfPages
-      doc={state.doc}
-      mode={mode}
-      pageWidth={pageWidth}
-      className={className}
-    />
-  );
+  return <PdfPages doc={state.doc} mode={mode} pageWidth={pageWidth} className={className} />;
 }
 
 interface PdfPagesProps {
@@ -181,12 +173,7 @@ function PdfPages({ doc, mode, pageWidth, className }: PdfPagesProps) {
       className={cn("flex h-full flex-col items-center gap-4 px-4 py-6", className)}
     >
       {pageNumbers.map((pageNumber) => (
-        <PdfPage
-          key={pageNumber}
-          doc={doc}
-          pageNumber={pageNumber}
-          pageWidth={pageWidth}
-        />
+        <PdfPage key={pageNumber} doc={doc} pageNumber={pageNumber} pageWidth={pageWidth} />
       ))}
     </div>
   );
@@ -227,8 +214,7 @@ function PdfPage({ doc, pageNumber, pageWidth }: PdfPageProps) {
         await page.render({ canvasContext: ctx, viewport, canvas }).promise;
       } catch (cause) {
         if (cancelled) return;
-        const message =
-          cause instanceof Error ? cause.message : "Failed to render page";
+        const message = cause instanceof Error ? cause.message : "Failed to render page";
         setError(message);
       }
     }

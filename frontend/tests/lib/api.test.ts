@@ -28,14 +28,12 @@ describe("api client", () => {
   });
 
   it("parses a healthz response", async () => {
-    const mockFetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ status: "ok", version: "0.0.1" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
+    const mockFetch = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ status: "ok", version: "0.0.1" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
 
     const result = await getHealthz();
 
@@ -50,9 +48,7 @@ describe("api client", () => {
   });
 
   it("throws an ApiError on non-2xx responses", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response("nope", { status: 503 }),
-    );
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("nope", { status: 503 }));
 
     await expect(getHealthz()).rejects.toBeInstanceOf(ApiError);
   });
@@ -83,14 +79,12 @@ describe("api client", () => {
         },
       ],
     };
-    const mockFetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify(manifest), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
+    const mockFetch = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(manifest), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
 
     const result = await getTranslationsManifest("/tmp/ws");
     expect(result).toEqual(manifest);
@@ -102,23 +96,19 @@ describe("api client", () => {
   });
 
   it("returns an empty manifest on 404", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response("missing", { status: 404 }),
-    );
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("missing", { status: 404 }));
 
     const result = await getTranslationsManifest("/tmp/ws");
     expect(result).toEqual({ version: 1, entries: [] });
   });
 
   it("posts /translate and returns the jobId", async () => {
-    const mockFetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ jobId: "job-1" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
+    const mockFetch = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ jobId: "job-1" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
 
     const result = await postTranslate({
       workspacePath: "/tmp/ws",
@@ -152,7 +142,13 @@ describe("api client", () => {
 
   it("fetches papers list", async () => {
     const papers = [
-      { slug: "attention-aaa", title: "Attention Is All You Need", authors: ["Vaswani"], year: 2017, ingestedAt: "2026-05-27T00:00:00Z" },
+      {
+        slug: "attention-aaa",
+        title: "Attention Is All You Need",
+        authors: ["Vaswani"],
+        year: 2017,
+        ingestedAt: "2026-05-27T00:00:00Z",
+      },
     ];
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify(papers), {
@@ -196,7 +192,11 @@ describe("api client", () => {
   });
 
   it("fetches a single concept page", async () => {
-    const page = { slug: "self-attention", content: "# Self-Attention", frontmatter: { title: "Self-Attention" } };
+    const page = {
+      slug: "self-attention",
+      content: "# Self-Attention",
+      frontmatter: { title: "Self-Attention" },
+    };
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify(page), {
         status: 200,
@@ -209,7 +209,12 @@ describe("api client", () => {
 
   it("fetches queries list", async () => {
     const queries = [
-      { id: "general/what-is-attention", question: "What is attention?", topic: "general", archivedAt: "2026-05-27T00:00:00Z" },
+      {
+        id: "general/what-is-attention",
+        question: "What is attention?",
+        topic: "general",
+        archivedAt: "2026-05-27T00:00:00Z",
+      },
     ];
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify(queries), {
@@ -222,7 +227,11 @@ describe("api client", () => {
   });
 
   it("fetches a single query page", async () => {
-    const page = { slug: "general/what-is-attention", content: "# Answer", frontmatter: { question: "What is attention?" } };
+    const page = {
+      slug: "general/what-is-attention",
+      content: "# Answer",
+      frontmatter: { question: "What is attention?" },
+    };
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify(page), {
         status: 200,
@@ -234,7 +243,13 @@ describe("api client", () => {
   });
 
   it("posts /ingest and returns the result", async () => {
-    const ingestResult = { slug: "paper", title: "Paper", cacheHit: false, filesTouched: [], durationS: 1.0 };
+    const ingestResult = {
+      slug: "paper",
+      title: "Paper",
+      cacheHit: false,
+      filesTouched: [],
+      durationS: 1.0,
+    };
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify(ingestResult), {
         status: 200,
@@ -254,7 +269,15 @@ describe("api client", () => {
   });
 
   it("posts /query and returns the result", async () => {
-    const queryResult = { question: "What?", answer: "A mechanism.", confidence: "high", sourcesCited: [], queryPagePath: "", filesTouched: [], durationS: 0.5 };
+    const queryResult = {
+      question: "What?",
+      answer: "A mechanism.",
+      confidence: "high",
+      sourcesCited: [],
+      queryPagePath: "",
+      filesTouched: [],
+      durationS: 0.5,
+    };
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify(queryResult), {
         status: 200,

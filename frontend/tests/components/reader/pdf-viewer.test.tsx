@@ -64,8 +64,7 @@ describe("PdfViewer", () => {
       const canvases = document.querySelectorAll("canvas[data-slot='pdf-page']");
       expect(canvases.length).toBe(3);
     });
-    expect(document.querySelector("[data-slot='pdf-viewer'][data-mode='single']"))
-      .not.toBeNull();
+    expect(document.querySelector("[data-slot='pdf-viewer'][data-mode='single']")).not.toBeNull();
   });
 
   it("renders pairs in dual mode", async () => {

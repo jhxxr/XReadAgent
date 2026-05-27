@@ -86,11 +86,7 @@ export function QueryDetailRoute() {
       <Card>
         <CardHeader className="pb-4">
           <h1 className="text-xl font-bold">{question}</h1>
-          {date && (
-            <p className="text-muted-foreground text-sm">
-              {date}
-            </p>
-          )}
+          {date && <p className="text-muted-foreground text-sm">{date}</p>}
         </CardHeader>
       </Card>
 

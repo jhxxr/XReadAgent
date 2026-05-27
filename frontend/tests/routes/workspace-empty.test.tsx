@@ -44,9 +44,7 @@ function renderWorkspace() {
 describe("Workspace empty state", () => {
   it("renders the empty-state heading and import button", async () => {
     renderWorkspace();
-    expect(
-      await screen.findByRole("heading", { name: /your wiki is empty/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /your wiki is empty/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /import paper/i })).toBeInTheDocument();
     expect(screen.getByText(/what is an llm wiki/i)).toBeInTheDocument();
   });

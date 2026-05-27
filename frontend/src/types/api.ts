@@ -145,11 +145,7 @@ export interface ErrorEvent {
 }
 
 /** Discriminated union of all WS events the backend pushes. */
-export type TranslationEvent =
-  | StageEvent
-  | ModelDownloadEvent
-  | FinishEvent
-  | ErrorEvent;
+export type TranslationEvent = StageEvent | ModelDownloadEvent | FinishEvent | ErrorEvent;
 
 // ---------------------------------------------------------------------------
 // Wiki read API types
@@ -187,12 +183,21 @@ export interface QueryRequest {
   model?: string;
 }
 
+/** A single piece of evidence backing a query answer. */
+export interface CitedEvidence {
+  sourceWikiPath: string;
+  quote: string;
+  confidence: string;
+}
+
 /** Response shape for `POST /api/query`. */
 export interface QueryResultResponse {
   question: string;
   answer: string;
   confidence: string;
   sourcesCited: string[];
+  /** Structured evidence trail — may be absent if the backend omits it. */
+  evidence?: CitedEvidence[];
   queryPagePath: string;
   filesTouched: string[];
   durationS: number;

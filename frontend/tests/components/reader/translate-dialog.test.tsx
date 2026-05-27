@@ -22,10 +22,7 @@ function makeWebSocketFactory(): {
     const ws = {
       url,
       readyState: 1,
-      addEventListener: (
-        event: string,
-        listener: (arg: unknown) => void,
-      ): void => {
+      addEventListener: (event: string, listener: (arg: unknown) => void): void => {
         listeners[event] = [...(listeners[event] ?? []), listener];
       },
       close: vi.fn(),
@@ -197,9 +194,7 @@ describe("TranslateDialog", () => {
   });
 
   it("surfaces a POST error without opening a socket", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response("nope", { status: 422 }),
-    );
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("nope", { status: 422 }));
     const { factory, sockets } = makeWebSocketFactory();
     const user = userEvent.setup();
 

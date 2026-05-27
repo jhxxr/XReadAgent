@@ -22,8 +22,7 @@ import type {
  * the random port the sidecar reports via `SIDECAR_READY port=<N>` and the
  * renderer will read it from `window.__XREAD_API__`.
  */
-export const apiBase: string =
-  (import.meta.env.VITE_API_BASE as string | undefined) ?? "/api";
+export const apiBase: string = (import.meta.env.VITE_API_BASE as string | undefined) ?? "/api";
 
 /**
  * Base for the WebSocket proxy. Vite proxies `/ws/*` to
@@ -87,9 +86,7 @@ export async function getHealthz(): Promise<HealthzResponse> {
 export async function getTranslationsManifest(
   workspacePath: string,
 ): Promise<TranslationsManifest> {
-  const url = `${apiBase}/translations/manifest?workspacePath=${encodeURIComponent(
-    workspacePath,
-  )}`;
+  const url = `${apiBase}/translations/manifest?workspacePath=${encodeURIComponent(workspacePath)}`;
   let response: Response;
   try {
     response = await fetch(url, { headers: { Accept: "application/json" } });
@@ -147,16 +144,11 @@ export function buildJobEventsWsUrl(jobId: string): string {
 
 /** Fetch all papers for a workspace. */
 export async function getPapers(workspacePath: string): Promise<PaperSummary[]> {
-  return request<PaperSummary[]>(
-    `/wiki/papers?workspacePath=${encodeURIComponent(workspacePath)}`,
-  );
+  return request<PaperSummary[]>(`/wiki/papers?workspacePath=${encodeURIComponent(workspacePath)}`);
 }
 
 /** Fetch a single paper page by slug. */
-export async function getPaper(
-  workspacePath: string,
-  slug: string,
-): Promise<WikiPageResponse> {
+export async function getPaper(workspacePath: string, slug: string): Promise<WikiPageResponse> {
   return request<WikiPageResponse>(
     `/wiki/papers/${encodeURIComponent(slug)}?workspacePath=${encodeURIComponent(workspacePath)}`,
   );
@@ -170,10 +162,7 @@ export async function getConcepts(workspacePath: string): Promise<ConceptSummary
 }
 
 /** Fetch a single concept page by slug. */
-export async function getConcept(
-  workspacePath: string,
-  slug: string,
-): Promise<WikiPageResponse> {
+export async function getConcept(workspacePath: string, slug: string): Promise<WikiPageResponse> {
   return request<WikiPageResponse>(
     `/wiki/concepts/${encodeURIComponent(slug)}?workspacePath=${encodeURIComponent(workspacePath)}`,
   );
@@ -198,18 +187,14 @@ export async function getQueryPage(
 }
 
 /** Fetch the wiki index page content. */
-export async function getWikiIndex(
-  workspacePath: string,
-): Promise<{ content: string }> {
+export async function getWikiIndex(workspacePath: string): Promise<{ content: string }> {
   return request<{ content: string }>(
     `/wiki/index?workspacePath=${encodeURIComponent(workspacePath)}`,
   );
 }
 
 /** Fetch the wiki overview page content. */
-export async function getWikiOverview(
-  workspacePath: string,
-): Promise<{ content: string }> {
+export async function getWikiOverview(workspacePath: string): Promise<{ content: string }> {
   return request<{ content: string }>(
     `/wiki/overview?workspacePath=${encodeURIComponent(workspacePath)}`,
   );

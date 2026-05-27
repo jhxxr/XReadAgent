@@ -13,8 +13,8 @@ export function PaperIndexRoute() {
           <p className="text-muted-foreground text-sm leading-relaxed">
             Once you ingest a source, the agent writes a{" "}
             <code className="bg-muted rounded px-1 py-0.5 text-xs">papers/&lt;slug&gt;.md</code>{" "}
-            page using the seven-section paper-curator template (Background, Challenges,
-            Solution, Positioning, Key Concepts, Experiments, Open Questions).
+            page using the seven-section paper-curator template (Background, Challenges, Solution,
+            Positioning, Key Concepts, Experiments, Open Questions).
           </p>
         </CardContent>
       </Card>

@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import {
-  BookOpenIcon,
-  FileQuestionIcon,
-  LightbulbIcon,
-  PaperclipIcon,
-} from "lucide-react";
+import { BookOpenIcon, FileQuestionIcon, LightbulbIcon, PaperclipIcon } from "lucide-react";
 
 import { ThemeToggle } from "@/components/shell/theme-toggle";
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
@@ -61,12 +56,7 @@ function PapersTab({ workspacePath }: { workspacePath: string }) {
     <ScrollArea className="h-full">
       <div className="grid gap-4 p-6 sm:grid-cols-2 lg:grid-cols-3">
         {data.map((paper: PaperSummary) => (
-          <Link
-            key={paper.slug}
-            to="/paper/$slug"
-            params={{ slug: paper.slug }}
-            className="block"
-          >
+          <Link key={paper.slug} to="/paper/$slug" params={{ slug: paper.slug }} className="block">
             <Card className="hover:border-primary/40 transition-colors">
               <CardHeader className="pb-3">
                 <CardTitle className="line-clamp-2 text-base">
@@ -83,9 +73,7 @@ function PapersTab({ workspacePath }: { workspacePath: string }) {
                 <div className="flex items-center gap-2">
                   {paper.year && <Badge variant="secondary">{paper.year}</Badge>}
                   {paper.ingestedAt && (
-                    <span>
-                      {new Date(paper.ingestedAt).toLocaleDateString()}
-                    </span>
+                    <span>{new Date(paper.ingestedAt).toLocaleDateString()}</span>
                   )}
                 </div>
               </CardContent>
@@ -144,17 +132,15 @@ function ConceptsTab({ workspacePath }: { workspacePath: string }) {
           >
             <Card className="hover:border-primary/40 transition-colors">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">
-                  {concept.title || concept.slug}
-                </CardTitle>
+                <CardTitle className="text-base">{concept.title || concept.slug}</CardTitle>
               </CardHeader>
               <CardContent className="text-muted-foreground space-y-1.5 text-xs">
                 {concept.aliases.length > 0 && (
-                  <p className="line-clamp-1">
-                    Aliases: {concept.aliases.join(", ")}
-                  </p>
+                  <p className="line-clamp-1">Aliases: {concept.aliases.join(", ")}</p>
                 )}
-                <p>{concept.paperCount} related paper{concept.paperCount !== 1 ? "s" : ""}</p>
+                <p>
+                  {concept.paperCount} related paper{concept.paperCount !== 1 ? "s" : ""}
+                </p>
               </CardContent>
             </Card>
           </Link>
@@ -216,17 +202,13 @@ function QueriesTab({ workspacePath }: { workspacePath: string }) {
                 <CardContent className="flex items-start gap-3 py-4">
                   <FileQuestionIcon className="text-muted-foreground mt-0.5 size-4 shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <p className="line-clamp-2 text-sm font-medium">
-                      {query.question}
-                    </p>
+                    <p className="line-clamp-2 text-sm font-medium">{query.question}</p>
                     <div className="text-muted-foreground mt-1 flex items-center gap-2 text-xs">
                       <Badge variant="outline" className="text-xs">
                         {query.topic}
                       </Badge>
                       {query.archivedAt && (
-                        <span>
-                          {new Date(query.archivedAt).toLocaleDateString()}
-                        </span>
+                        <span>{new Date(query.archivedAt).toLocaleDateString()}</span>
                       )}
                     </div>
                   </div>
@@ -249,9 +231,7 @@ export function WorkspaceRoute() {
         <header className="border-border/60 flex h-14 items-center gap-4 border-b px-6">
           <div className="flex flex-col">
             <h1 className="text-sm font-semibold leading-tight">Default Workspace</h1>
-            <p className="text-muted-foreground text-xs">
-              Local-first &middot; LLM-Wiki memory
-            </p>
+            <p className="text-muted-foreground text-xs">Local-first &middot; LLM-Wiki memory</p>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
@@ -267,9 +247,7 @@ export function WorkspaceRoute() {
       <header className="border-border/60 flex h-14 items-center gap-4 border-b px-6">
         <div className="flex flex-col">
           <h1 className="text-sm font-semibold leading-tight">Default Workspace</h1>
-          <p className="text-muted-foreground text-xs">
-            Local-first &middot; LLM-Wiki memory
-          </p>
+          <p className="text-muted-foreground text-xs">Local-first &middot; LLM-Wiki memory</p>
         </div>
         <Tabs defaultValue="papers" className="ml-6 hidden sm:block">
           <TabsList>

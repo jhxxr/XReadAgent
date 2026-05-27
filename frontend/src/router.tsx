@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import {
-  createRootRoute,
-  createRoute,
-  createRouter,
-  redirect,
-} from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
 
 import { AppShell } from "@/components/shell/app-shell";
 import { ConceptRoute } from "@/routes/concept";

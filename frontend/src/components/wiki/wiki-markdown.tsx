@@ -104,10 +104,7 @@ export function WikiMarkdown({ content }: WikiMarkdownProps) {
             const isInline = !className;
             if (isInline) {
               return (
-                <code
-                  className="bg-muted rounded px-1.5 py-0.5 text-xs"
-                  {...props}
-                >
+                <code className="bg-muted rounded px-1.5 py-0.5 text-xs" {...props}>
                   {children}
                 </code>
               );

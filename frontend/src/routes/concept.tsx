@@ -76,9 +76,7 @@ export function ConceptRoute() {
         <CardHeader className="pb-4">
           <h1 className="text-xl font-bold">{title}</h1>
           {aliases.length > 0 && (
-            <p className="text-muted-foreground text-sm">
-              Also known as: {aliases.join(", ")}
-            </p>
+            <p className="text-muted-foreground text-sm">Also known as: {aliases.join(", ")}</p>
           )}
         </CardHeader>
       </Card>

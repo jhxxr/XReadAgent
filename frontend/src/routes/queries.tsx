@@ -19,8 +19,8 @@ export function QueriesRoute() {
             </code>
             . Archives never auto-modify{" "}
             <code className="bg-muted rounded px-1 py-0.5 text-xs">papers/</code>,{" "}
-            <code className="bg-muted rounded px-1 py-0.5 text-xs">concepts/</code>, or the
-            index &mdash; promoting an answer into the wiki is an explicit{" "}
+            <code className="bg-muted rounded px-1 py-0.5 text-xs">concepts/</code>, or the index
+            &mdash; promoting an answer into the wiki is an explicit{" "}
             <code className="bg-muted rounded px-1 py-0.5 text-xs">/crystallize</code> step.
           </p>
         </CardContent>

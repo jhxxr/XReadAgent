@@ -43,9 +43,7 @@ function buildSources(
     // a future ingest manifest exposes it. For now, surface `null` so the
     // Original tab shows a clear "no original on this workspace" state.
     original:
-      workspacePath.length > 0
-        ? buildWorkspaceFileUrl(workspacePath, `raw/${slug}.pdf`)
-        : null,
+      workspacePath.length > 0 ? buildWorkspaceFileUrl(workspacePath, `raw/${slug}.pdf`) : null,
     mono:
       entry?.monoPath !== undefined && entry.monoPath !== null && workspacePath.length > 0
         ? buildWorkspaceFileUrl(workspacePath, entry.monoPath)
@@ -177,8 +175,7 @@ export function PaperReadRoute() {
               <PdfViewer url={sources.dual} mode="dual" />
             ) : (
               <EmptyPaneState>
-                No dual PDF yet. Click <span className="font-medium">Translate</span>{" "}
-                to create one.
+                No dual PDF yet. Click <span className="font-medium">Translate</span> to create one.
               </EmptyPaneState>
             )}
           </TabsContent>
@@ -187,8 +184,8 @@ export function PaperReadRoute() {
               <PdfViewer url={sources.mono} mode="single" />
             ) : (
               <EmptyPaneState>
-                No translated-only PDF yet. Click{" "}
-                <span className="font-medium">Translate</span> to create one.
+                No translated-only PDF yet. Click <span className="font-medium">Translate</span> to
+                create one.
               </EmptyPaneState>
             )}
           </TabsContent>
@@ -213,11 +210,9 @@ function NoWorkspaceState() {
     <div className="text-muted-foreground mx-auto flex max-w-md flex-col items-center justify-center gap-2 px-6 py-16 text-center text-sm">
       <p className="text-foreground font-medium">No workspace selected</p>
       <p>
-        The reader needs a workspace path to fetch original and translated PDFs from.
-        Set one via the workspace picker (coming in Phase 3) or by writing
-        <code className="bg-muted mx-1 rounded px-1 py-0.5 text-xs">
-          xreadagent.workspacePath
-        </code>
+        The reader needs a workspace path to fetch original and translated PDFs from. Set one via
+        the workspace picker (coming in Phase 3) or by writing
+        <code className="bg-muted mx-1 rounded px-1 py-0.5 text-xs">xreadagent.workspacePath</code>
         into <code>localStorage</code>.
       </p>
     </div>

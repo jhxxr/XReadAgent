@@ -26,8 +26,8 @@ export function WorkspaceEmptyState() {
           <div className="flex flex-col gap-2">
             <h2 className="text-2xl font-semibold tracking-tight">Your wiki is empty</h2>
             <p className="text-muted-foreground max-w-sm text-sm leading-relaxed">
-              Drop a PDF, DOCX, or HTML to start building your second brain. Each source
-              touches 10&ndash;15 wiki pages so synthesis compounds.
+              Drop a PDF, DOCX, or HTML to start building your second brain. Each source touches
+              10&ndash;15 wiki pages so synthesis compounds.
             </p>
           </div>
 
@@ -61,17 +61,16 @@ export function WorkspaceEmptyState() {
           </DialogHeader>
           <div className="text-foreground/90 flex flex-col gap-3 text-sm leading-relaxed">
             <p>
-              An LLM Wiki is a folder of markdown pages that an agent maintains on your behalf.
-              Each ingested source touches roughly ten to fifteen pages &mdash; a paper page,
-              a few concept pages, the index, the log &mdash; so the synthesis happens once and
-              compounds, instead of being re-derived every time you ask a question.
+              An LLM Wiki is a folder of markdown pages that an agent maintains on your behalf. Each
+              ingested source touches roughly ten to fifteen pages &mdash; a paper page, a few
+              concept pages, the index, the log &mdash; so the synthesis happens once and compounds,
+              instead of being re-derived every time you ask a question.
             </p>
             <p>
               Queries read from the wiki and archive their answers under{" "}
-              <code className="bg-muted rounded px-1 py-0.5 text-xs">wiki/queries/</code>.
-              Archives never auto-modify the synthesis pages; promoting a Q&amp;A into the wiki
-              is an explicit{" "}
-              <code className="bg-muted rounded px-1 py-0.5 text-xs">/crystallize</code>{" "}
+              <code className="bg-muted rounded px-1 py-0.5 text-xs">wiki/queries/</code>. Archives
+              never auto-modify the synthesis pages; promoting a Q&amp;A into the wiki is an
+              explicit <code className="bg-muted rounded px-1 py-0.5 text-xs">/crystallize</code>{" "}
               step you control.
             </p>
           </div>
