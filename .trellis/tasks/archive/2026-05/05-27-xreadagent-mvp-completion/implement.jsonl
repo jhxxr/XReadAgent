@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend hard rules: AGPL SPDX, _Strict Pydantic, camelCase state schemas, atomic writes, no LangChain outside agents, UTC timestamps"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Workspace layout, accessor discipline, page section skeletons for wiki API endpoints"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Domain error types for API endpoints, validate-at-boundary pattern"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend stack pinning: React 19, Vite 6, TanStack Router/Query, shadcn, Tailwind 4, AGPL SPDX headers"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Radix wrappers, CVA variants, data-slot, lucide icons for new wiki browser components"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "TanStack Query for server state, no global store — pattern for wiki data fetching"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Strict TS, noUncheckedIndexedAccess, types/api.ts as Pydantic mirror for new API types"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Context-provider pairs, TanStack Query query patterns for wiki data hooks"}
