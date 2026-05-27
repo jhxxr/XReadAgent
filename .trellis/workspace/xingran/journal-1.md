@@ -216,3 +216,37 @@ Replaced CopilotSidebar placeholder with functional non-modal slide-in panel. Us
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: Settings UI + Copilot Sidebar
+
+**Date**: 2026-05-27
+**Task**: Settings UI + Copilot Sidebar
+**Branch**: `main`
+
+### Summary
+
+Implemented copilot sidebar (non-modal slide-in panel with ask/answer and evidence display) and settings UI (backend GET/PUT /api/settings with ~/.xreadagent/settings.json persistence, frontend /settings route with model and workspace path form, sidebar Settings button enabled). Model resolution chain updated: request body > settings file > env var.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2b0bf74` | (see git log) |
+| `350a624` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 6
+- **Total Sessions**: 7
 - **Last Active**: 2026-05-27
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~218 | Active |
+| `journal-1.md` | ~252 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 7 | 2026-05-27 | Settings UI + Copilot Sidebar | `2b0bf74`, `350a624` | `main` |
 | 6 | 2026-05-27 | Copilot Sidebar: non-modal slide-in panel with ask/answer and evidence | `2b0bf74` | `main` |
 | 5 | 2026-05-27 | Wiki Browser + Agent API: backend endpoints, tests, frontend pages | `898c90a`, `dc85992`, `cce3ffa` | `main` |
 | 4 | 2026-05-27 | BabelDOC real-run fixes: streaming + warmup + integration test | `21fbeed` | `main` |
