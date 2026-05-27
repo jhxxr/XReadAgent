@@ -115,3 +115,36 @@ Phase 2A: BabelDOC 0.6.2 translation worker in a ProcessPoolExecutor subprocess 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: BabelDOC real-run fixes: streaming + warmup + integration test
+
+**Date**: 2026-05-27
+**Task**: BabelDOC real-run fixes: streaming + warmup + integration test
+**Branch**: `main`
+
+### Summary
+
+Fixed BabelDOC real-run issues: replaced buffered asyncio.run with daemon-thread event loop for real-time streaming, added init()+warmup() with scoped httpx monkey-patch for per-chunk download progress, and added @pytest.mark.babeldoc integration test. All 287 tests green, ruff+mypy clean.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `21fbeed` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
