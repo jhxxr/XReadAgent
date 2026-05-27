@@ -148,3 +148,38 @@ Fixed BabelDOC real-run issues: replaced buffered asyncio.run with daemon-thread
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: Wiki Browser + Agent API: backend endpoints, tests, frontend pages
+
+**Date**: 2026-05-27
+**Task**: Wiki Browser + Agent API: backend endpoints, tests, frontend pages
+**Branch**: `main`
+
+### Summary
+
+Added wiki read API (papers/concepts/queries/index/overview), ingest/query HTTP endpoints, shared frontmatter parser, 20 new backend tests, frontend wiki browser with real API data, WikiMarkdown with wiki-link rendering, concept and query detail pages, 8 new frontend API tests.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `898c90a` | (see git log) |
+| `dc85992` | (see git log) |
+| `cce3ffa` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

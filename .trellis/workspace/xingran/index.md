@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 4
+- **Total Sessions**: 5
 - **Last Active**: 2026-05-27
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~150 | Active |
+| `journal-1.md` | ~185 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 5 | 2026-05-27 | Wiki Browser + Agent API: backend endpoints, tests, frontend pages | `898c90a`, `dc85992`, `cce3ffa` | `main` |
 | 4 | 2026-05-27 | BabelDOC real-run fixes: streaming + warmup + integration test | `21fbeed` | `main` |
 | 3 | 2026-05-26 | Phase 2 - BabelDOC layout-preserving translation backend + PDF.js reader frontend | `d4405a7`, `d793f68`, `aff50c0`, `22638a8`, `f46c74c` | `main` |
 | 2 | 2026-05-25 | Bootstrap guidelines: fill frontend spec from Phase 0+1 code | `f249176` | `main` |
