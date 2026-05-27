@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend stack pinning and conventions for quality verification"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend quality checklist: ESLint, Prettier, AGPL SPDX, Vitest invariants"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TypeScript strict rules for type-check verification"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component conventions for code review"}
