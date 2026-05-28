@@ -1,20 +1,51 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# electron-builder configuration for XReadAgent desktop packaging.
+#
+# Build: `pnpm pack` (directory-only, for testing) or `pnpm dist` (NSIS installer).
+# Python bundling is separate: run `pnpm pack:python` before `pnpm dist`.
+#
+# Key paths:
+#   resources/python/      - Bundled CPython 3.12 (from python-build-standalone)
+#   resources/python-venv/ - Virtual environment with installed dependencies
+#   resources/backend/     - XReadAgent Python source (xreadagent package)
+#   frontend/dist/          - Pre-built frontend static assets
+
 appId: com.xreadagent.desktop
 productName: XReadAgent
 copyright: Copyright (c) 2025 XReadAgent contributors (AGPL-3.0-or-later)
 
 directories:
   output: release
-  buildResources: resources
+  buildResources: build
 
+# Only include the compiled dist/ output.
+# esbuild bundles all source into dist/main.js and dist/preload.js,
+# so node_modules is not needed in production (no production dependencies).
 files:
   - dist/**/*
   - "!dist/tsconfig.tsbuildinfo"
 
+# Extra resources are unpacked alongside the app (not inside asar).
+# These are large directories that should not be inside the asar archive.
 extraResources:
+  # Bundled Python interpreter (from python-build-standalone).
+  # Only present after running `pnpm pack:python`.
   - from: resources/python
     to: python
     filter:
       - "**/*"
+  # Python virtual environment with xreadagent dependencies installed.
+  - from: resources/python-venv
+    to: python-venv
+    filter:
+      - "**/*"
+  # XReadAgent Python backend source.
+  - from: resources/backend
+    to: backend
+    filter:
+      - "**/*"
+  # Pre-built frontend static assets served by the Python sidecar.
   - from: ../frontend/dist
     to: frontend
     filter:
@@ -26,19 +57,27 @@ protocols:
     schemes:
       - xread
 
-# File association for .xread workspace files.
+# File association for .xread workspace marker files.
 fileAssociations:
   - ext: xread
     name: XReadAgent Workspace
     description: XReadAgent workspace marker file
     role: Editor
 
+# asar packing for the Electron app itself.
+# Python and backend are in extraResources (not inside asar).
+asar: true
+asarUnpack:
+  - "dist/**/*.node"
+
+# Windows-specific configuration.
 win:
   target:
     - target: nsis
       arch: [x64]
-  icon: resources/icon.ico
+  icon: build/icon.ico
 
+# NSIS installer configuration.
 nsis:
   oneClick: false
   perMachine: false
@@ -46,5 +85,19 @@ nsis:
   deleteAppDataOnUninstall: false
   shortcutName: XReadAgent
   artifactName: "${productName}-Setup-${version}.${ext}"
+  # Default installer language: English (1033).
+  # Simplified Chinese (2052) is supported — users can switch in the installer UI.
+  # Multi-language NSIS requires electron-builder >= 25 with language packs.
+  language: 1033
 
-asar: true
+# macOS configuration (reserved for future v2).
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.icns
+
+# Linux configuration (reserved for future v2).
+linux:
+  target:
+    - AppImage
+  icon: build/icon.png
+  category: Office

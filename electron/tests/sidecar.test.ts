@@ -8,8 +8,9 @@
  * included here.
  */
 import { describe, it, expect } from "vitest";
+import path from "node:path";
 
-import { SIDECAR_READY_RE, resolvePythonPath, SidecarManager } from "../src/sidecar";
+import { SIDECAR_READY_RE, resolvePythonPath, resolveSidecarPaths, SidecarManager } from "../src/sidecar";
 import type { SidecarRestartInfo } from "../src/sidecar";
 
 // ---------------------------------------------------------------------------
@@ -111,6 +112,67 @@ describe("resolvePythonPath", () => {
       expect(result).toContain("python");
       expect(result).not.toContain(".exe");
     }
+  });
+
+  it("returns the correct bundled path for each platform", () => {
+    const mockApp = {
+      isPackaged: true,
+      getAppPath: () => "/app/electron",
+    };
+
+    const result = resolvePythonPath(mockApp, "/app/resources");
+    // python-build-standalone install_only layout after --strip-components=2:
+    //   Windows: resources/python/python.exe
+    //   Linux/macOS: resources/python/bin/python3
+    // Note: path.join uses backslashes on Windows, forward slashes on others.
+    const expected = process.platform === "win32"
+      ? path.join("/app/resources", "python", "python.exe")
+      : path.join("/app/resources", "python", "bin", "python3");
+    expect(result).toBe(expected);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveSidecarPaths
+// ---------------------------------------------------------------------------
+
+describe("resolveSidecarPaths", () => {
+  it("returns empty venvPath and backendPath in development mode", () => {
+    const mockApp = {
+      isPackaged: false,
+      getAppPath: () => "/project/electron",
+    };
+
+    const paths = resolveSidecarPaths(mockApp);
+    expect(paths.pythonPath).toContain(".venv");
+    expect(paths.venvPath).toBe("");
+    expect(paths.backendPath).toBe("");
+  });
+
+  it("returns all production paths in packaged mode", () => {
+    const mockApp = {
+      isPackaged: true,
+      getAppPath: () => "/app/electron",
+    };
+
+    const paths = resolveSidecarPaths(mockApp, "/app/resources");
+    expect(paths.pythonPath).toContain("python");
+    expect(paths.venvPath).toBe(path.join("/app/resources", "python-venv"));
+    expect(paths.backendPath).toBe(path.join("/app/resources", "backend"));
+  });
+
+  it("returns consistent paths when resourcesPath is provided explicitly", () => {
+    const mockApp = {
+      isPackaged: true,
+      getAppPath: () => "/app/electron",
+    };
+
+    // In production, resourcesPath comes from process.resourcesPath (injected by
+    // Electron). In tests we must pass it explicitly since process.resourcesPath
+    // is not available outside Electron.
+    const paths = resolveSidecarPaths(mockApp, "/custom/resources");
+    expect(paths.venvPath).toBe(path.join("/custom/resources", "python-venv"));
+    expect(paths.backendPath).toBe(path.join("/custom/resources", "backend"));
   });
 });
 

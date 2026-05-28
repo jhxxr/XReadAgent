@@ -17,7 +17,7 @@ import * as path from "node:path";
 
 import { parseDeepLink, parseXreadFile } from "./deeplink";
 import { buildApplicationMenu } from "./menu";
-import { SidecarManager, resolvePythonPath } from "./sidecar";
+import { SidecarManager, resolveSidecarPaths } from "./sidecar";
 import { SPLASH_HTML, SPLASH_HEIGHT, SPLASH_WIDTH } from "./splash";
 
 // ---------------------------------------------------------------------------
@@ -55,8 +55,14 @@ let pendingFileOpen: string | null = null;
 // ---------------------------------------------------------------------------
 
 app.whenReady().then(async () => {
-  const pythonPath = resolvePythonPath(app);
-  sidecarManager.setPythonPath(pythonPath);
+  const paths = resolveSidecarPaths(app);
+  sidecarManager.setPythonPath(paths.pythonPath);
+  if (paths.venvPath || paths.backendPath) {
+    sidecarManager.setOptions({
+      venvPath: paths.venvPath || undefined,
+      backendPath: paths.backendPath || undefined,
+    });
+  }
 
   createTray();
   setApplicationMenu();

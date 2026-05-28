@@ -36,8 +36,12 @@ electron/dist/
 electron/node_modules/
 electron/release/
 
-# Bundled Python (python-build-standalone)
-resources/python/
+# Bundled Python (python-build-standalone, populated by `pnpm pack:python`)
+electron/resources/python/
+electron/resources/backend/
+electron/resources/python-venv/
+electron/resources/*.zip
+electron/resources/*.tar.gz
 
 # OS
 .DS_Store

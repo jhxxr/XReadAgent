@@ -48,6 +48,18 @@ export interface SidecarOptions {
   env?: Record<string, string>;
   /** Working directory for the Python process. Defaults to `process.cwd()`. */
   cwd?: string;
+  /**
+   * Path to the bundled venv directory (production only).
+   * When set, VIRTUAL_ENV and PATH are adjusted so the sidecar uses
+   * the venv's site-packages instead of the base Python's.
+   */
+  venvPath?: string;
+  /**
+   * Path to the bundled backend source directory (production only).
+   * When set, PYTHONPATH includes this directory so Python can find
+   * the xreadagent package.
+   */
+  backendPath?: string;
 }
 
 export interface SidecarHandle {
@@ -92,6 +104,11 @@ export class SidecarManager {
   /** Update the Python interpreter path (called after app is packaged-aware). */
   setPythonPath(pythonPath: string): void {
     this.options = { ...this.options, pythonPath };
+  }
+
+  /** Update sidecar options (venvPath, backendPath, etc.) for production mode. */
+  setOptions(opts: Partial<SidecarOptions>): void {
+    this.options = { ...this.options, ...opts };
   }
 
   /** Current status string for UI display. */
@@ -208,13 +225,37 @@ export class SidecarManager {
 
   private spawnProcess(): ChildProcess {
     const args = ["-m", "xreadagent.api", "--port", "0", ...(this.options.pythonArgs ?? [])];
+
+    // Build environment: start from process.env, then layer on production overrides.
+    const env: Record<string, string> = {
+      ...process.env as Record<string, string>,
+      PYTHONUNBUFFERED: "1",
+    };
+
+    // In production, the bundled Python needs to find:
+    // 1. The venv's site-packages (for installed dependencies like fastapi, etc.)
+    // 2. The backend source directory (for the xreadagent package itself)
+    if (this.options.venvPath) {
+      env.VIRTUAL_ENV = this.options.venvPath;
+      // Prepend the venv's Scripts/ or bin/ directory to PATH so the Python
+      // process can find venv-installed binaries if needed.
+      const venvBin = process.platform === "win32"
+        ? path.join(this.options.venvPath, "Scripts")
+        : path.join(this.options.venvPath, "bin");
+      env.PATH = `${venvBin}${path.delimiter}${env.PATH ?? ""}`;
+    }
+
+    if (this.options.backendPath) {
+      // PYTHONPATH ensures Python can import xreadagent from the bundled source.
+      env.PYTHONPATH = this.options.backendPath;
+    }
+
+    // Merge any caller-provided env overrides last (highest priority).
+    Object.assign(env, this.options.env ?? {});
+
     const proc = spawn(this.options.pythonPath, args, {
       cwd: this.options.cwd,
-      env: {
-        ...process.env,
-        PYTHONUNBUFFERED: "1",
-        ...this.options.env,
-      },
+      env,
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -418,10 +459,16 @@ export function resolvePythonPath(
   resourcesPath?: string,
 ): string {
   if (app.isPackaged) {
-    // Packaged build — use bundled Python.
+    // Packaged build — use bundled Python (python-build-standalone install_only layout).
+    // After extraction with --strip-components=2 (tar) or equivalent (zip),
+    // the layout is:
+    //   Windows: resources/python/python.exe
+    //   Linux/macOS: resources/python/bin/python3
     const resPath = resourcesPath ?? process.resourcesPath;
-    const ext = process.platform === "win32" ? ".exe" : "";
-    return path.join(resPath, "python", `python${ext}`);
+    if (process.platform === "win32") {
+      return path.join(resPath, "python", "python.exe");
+    }
+    return path.join(resPath, "python", "bin", "python3");
   }
 
   // Development — use the project's .venv.
@@ -432,4 +479,40 @@ export function resolvePythonPath(
       : path.join(projectRoot, ".venv", "bin", "python");
 
   return venvPython;
+}
+
+/** Resolved paths for the sidecar's production environment. */
+export interface ResolvedSidecarPaths {
+  pythonPath: string;
+  venvPath: string;
+  backendPath: string;
+}
+
+/**
+ * Resolve all production paths needed by the sidecar.
+ *
+ * In production, the sidecar needs to know where to find:
+ * - The Python interpreter (resources/python/)
+ * - The venv with dependencies (resources/python-venv/)
+ * - The xreadagent package source (resources/backend/)
+ *
+ * In development, only pythonPath is needed (the project .venv has everything).
+ */
+export function resolveSidecarPaths(
+  app: { isPackaged: boolean; getAppPath(): string },
+  resourcesPath?: string,
+): ResolvedSidecarPaths {
+  const pythonPath = resolvePythonPath(app, resourcesPath);
+
+  if (!app.isPackaged) {
+    // Development: no venvPath/backendPath needed — the project .venv has everything.
+    return { pythonPath, venvPath: "", backendPath: "" };
+  }
+
+  const resPath = resourcesPath ?? process.resourcesPath;
+  return {
+    pythonPath,
+    venvPath: path.join(resPath, "python-venv"),
+    backendPath: path.join(resPath, "backend"),
+  };
 }
