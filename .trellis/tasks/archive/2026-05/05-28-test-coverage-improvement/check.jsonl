@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Verify tests follow backend conventions: one file per module, strict-mode assertions, tmp_path, SPDX headers"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify tests follow frontend conventions: Vitest+jsdom, createMemoryHistory, vi.mock, named exports only, SPDX headers"}
+{"file": "backend/src/xreadagent/api/settings.py", "reason": "Source module — verify all public functions are tested: AppSettings, UpdateSettingsRequest, load/save/merge"}
+{"file": "backend/src/xreadagent/api/main.py", "reason": "Verify settings endpoints (GET/PUT /api/settings) are tested via TestClient"}
+{"file": "frontend/tests/routes/settings.test.tsx", "reason": "Reference — verify new route tests follow same pattern"}
