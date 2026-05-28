@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
+- **Total Sessions**: 9
 - **Last Active**: 2026-05-28
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~286 | Active |
+| `journal-1.md` | ~324 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-05-28 | Electron desktop client: shell, IPC, native integrations, packaging | `165947c`, `50ddfd7`, `ef63b42`, `e7a7798`, `676fd84`, `0a69554` | `main` |
 | 8 | 2026-05-28 | Test coverage: settings API + frontend routes + shell components | `0f652f5`, `11a7cd7` | `main` |
 | 7 | 2026-05-27 | Settings UI + Copilot Sidebar | `2b0bf74`, `350a624` | `main` |
 | 6 | 2026-05-27 | Copilot Sidebar: non-modal slide-in panel with ask/answer and evidence | `2b0bf74` | `main` |

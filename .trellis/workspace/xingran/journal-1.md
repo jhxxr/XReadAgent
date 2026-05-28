@@ -284,3 +284,41 @@ Added 48 new tests: 25 backend (settings module: model validation, load/save/mer
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: Electron desktop client: shell, IPC, native integrations, packaging
+
+**Date**: 2026-05-28
+**Task**: Electron desktop client: shell, IPC, native integrations, packaging
+**Branch**: `main`
+
+### Summary
+
+Implemented full Electron desktop client for XReadAgent across 5 PRs: (1) Electron scaffold with Python sidecar lifecycle management, (2) preload bridge + frontend platform detection + sidecar status page, (3) system tray + app menu + file association + deep links + notifications, (4) enhanced sidecar status page + crash restart UX + splash error handling, (5) packaging config + Python bundling + build pipeline. Added Electron spec and updated cross-layer guide.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `165947c` | (see git log) |
+| `50ddfd7` | (see git log) |
+| `ef63b42` | (see git log) |
+| `e7a7798` | (see git log) |
+| `676fd84` | (see git log) |
+| `0a69554` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
