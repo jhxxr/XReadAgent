@@ -31,6 +31,14 @@ dist-electron/
 coverage/
 *.tsbuildinfo
 
+# Electron
+electron/dist/
+electron/node_modules/
+electron/release/
+
+# Bundled Python (python-build-standalone)
+resources/python/
+
 # OS
 .DS_Store
 Thumbs.db
