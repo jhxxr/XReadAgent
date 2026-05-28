@@ -86,6 +86,31 @@ When you need to suppress a rule, do it on the **specific line** with `// eslint
 | `routes/` | One render-and-assert test per route, exercising the empty state and any user interaction (dialog open, button click). Build a fresh `QueryClient` + `createMemoryHistory({ initialEntries: [...] })` router per test — never share singletons between tests. |
 | `hooks` | Wrap in a probe component (`ThemeProbe` in `tests/lib/theme.test.tsx`) and assert observable behavior (class on `<html>`, persisted value, exposed `theme` state). |
 
+**`vi.hoisted` for mock factories**: `vi.mock` factory functions are hoisted above `const` declarations, so any mock function referenced inside the factory must be created with `vi.hoisted()`. Using a plain `const` inside `vi.mock(factory)` is a compile error; the factory runs before the `const` is evaluated.
+
+**`importOriginal` for class-preserving mocks**: when a component uses `instanceof ApiError` (or any class from the mocked module), `vi.mock("@/lib/api", ...)` replaces the entire module — including the class. Use `importOriginal` inside the factory to preserve the class while mocking functions:
+
+```typescript
+const { getHealthz } = vi.hoisted(() => ({
+  getHealthz: vi.fn(),
+}));
+
+vi.mock("@/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api")>();
+  return { ...actual, getHealthz };
+});
+```
+
+**`matchMedia` re-installation**: `setup.ts` stubs `window.matchMedia`, but `vi.restoreAllMocks()` in `afterEach` wipes it. Any test file that calls `vi.restoreAllMocks()` (or has `afterEach(() => { vi.restoreAllMocks() })`) must re-install the stub in `beforeEach`:
+
+```typescript
+beforeEach(() => {
+  // setup.ts stub is wiped by restoreAllMocks; re-install it.
+  window.matchMedia = (query: string) =>
+    ({ matches: false, media: query, ... }) as MediaQueryList;
+});
+```
+
 **Async event helpers**: use `@testing-library/user-event` (`userEvent.setup()`), wrap state-mutating clicks in `act(async () => { await user.click(...) })` when chasing the React 19 act warnings.
 
 Phase 0+1 ended with 5 frontend tests passing (`api` x 3, `theme` x 1, `workspace-empty` x 1). Phase 2 will grow this — keep each route at ≥1 render test, and add a test for every new `lib/` helper.

@@ -268,6 +268,7 @@ for source in sources:
 - **Idempotency proofs**: cache-hit, re-ingest, deterministic regeneration each get a dedicated test.
 - **Isolation contracts**: byte-digest tests for queries (Phase 1B) and the same pattern for future read-only agents (Lint, Phase 3).
 - **Mock at the right level**: agent tests inject stub planners; converter tests mock the subprocess. Tools that talk to the filesystem use real `tmp_path` fixtures — don't mock the FS.
+- **Module-global patching for settings paths**: when a module uses a top-level constant like `_SETTINGS_FILE = Path.home() / ".xreadagent" / "settings.json"`, tests redirect it via `monkeypatch.setattr(settings_mod, "_SETTINGS_FILE", tmp_path / "settings.json")` and `monkeypatch.setattr(settings_mod, "_SETTINGS_DIR", tmp_path)`. This avoids touching the real home directory and keeps tests hermetic.
 - **Heavy deps are opt-in**: tests requiring a real MinerU install live behind `@pytest.mark.mineru`; the BabelDOC engine smoke test lives behind `@pytest.mark.babeldoc` under `backend/tests/integration/`. Default `pytest backend/` skips both. See `backend/tests/README.md` for the full marker table + opt-in commands. Real-LLM smoke tests will live behind `@pytest.mark.integration` (not yet introduced).
 
 ---
