@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { buildWorkspaceFileUrl, getTranslationsManifest } from "@/lib/api";
+import { notifyOnCompletion } from "@/lib/notifications";
 import { readWorkspacePath } from "@/lib/workspace";
 import type { FinishEvent, TranslationEntry, TranslationsManifest } from "@/types/api";
 
@@ -103,12 +104,14 @@ export function PaperReadRoute() {
         setTab("translated");
         setTabPinned(true);
       }
+      // Send a desktop notification for the completed translation.
+      notifyOnCompletion("Translation complete", `Paper "${slug}" has been translated.`);
       // Close the dialog on the next tick so the success toast can flash.
       setTimeout(() => {
         setTranslateOpen(false);
       }, 600);
     },
-    [queryClient, workspacePath],
+    [queryClient, workspacePath, slug],
   );
 
   return (

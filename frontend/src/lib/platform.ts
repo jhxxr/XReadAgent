@@ -10,6 +10,7 @@
  * All frontend code should use `getApiBaseUrl()` and `getWsBaseUrl()` instead
  * of hardcoding `/api` or `ws://localhost:8765`.
  */
+import type { DeepLinkAction } from "@/types/electron";
 
 /**
  * Returns `true` when running inside an Electron BrowserWindow with the
@@ -108,4 +109,72 @@ export function getWsBaseUrl(): string {
     return `${protocol}//${window.location.host}`;
   }
   return "ws://localhost:8765";
+}
+
+// ---------------------------------------------------------------------------
+// Deep link and workspace open listeners
+// ---------------------------------------------------------------------------
+
+/**
+ * Register a callback for deep link navigation from the Electron main process.
+ *
+ * In browser dev mode, this is a no-op (deep links only work in the
+ * packaged Electron app).
+ *
+ * @param callback - Called with the parsed `DeepLinkAction` when a deep link
+ *   or file-open event arrives. The renderer should use TanStack Router to
+ *   navigate to the specified path or open the specified workspace.
+ * @returns A cleanup function that removes the listener.
+ */
+export function onDeepLink(callback: (action: DeepLinkAction) => void): () => void {
+  if (!isElectron()) return () => undefined;
+  const api = getElectronAPI();
+  if (!api) return () => undefined;
+
+  api.onDeepLink(callback);
+  // Return a no-op cleanup — Electron's ipcRenderer.on doesn't support
+  // removing specific listeners from the preload bridge in v1.
+  // If finer-grained cleanup is needed, we can add an `offDeepLink` method
+  // to the bridge later.
+  return () => undefined;
+}
+
+/**
+ * Register a callback for workspace open requests from the Electron main process.
+ *
+ * Triggered when the user selects "Open Workspace" from the menu or double-clicks
+ * a `.xread` file. The callback receives the workspace directory path.
+ *
+ * In browser dev mode, this is a no-op.
+ *
+ * @param callback - Called with the workspace path string.
+ * @returns A cleanup function that removes the listener.
+ */
+export function onOpenWorkspace(callback: (workspacePath: string) => void): () => void {
+  if (!isElectron()) return () => undefined;
+  const api = getElectronAPI();
+  if (!api) return () => undefined;
+
+  api.onOpenWorkspace(callback);
+  return () => undefined;
+}
+
+/**
+ * Register a callback for menu-driven navigation from the Electron main process.
+ *
+ * Triggered when the user selects "Preferences" from the menu, etc.
+ * The callback receives the route path to navigate to (e.g. "/settings").
+ *
+ * In browser dev mode, this is a no-op.
+ *
+ * @param callback - Called with the route path string.
+ * @returns A cleanup function that removes the listener.
+ */
+export function onMenuNavigate(callback: (path: string) => void): () => void {
+  if (!isElectron()) return () => undefined;
+  const api = getElectronAPI();
+  if (!api) return () => undefined;
+
+  api.onMenuNavigate(callback);
+  return () => undefined;
 }

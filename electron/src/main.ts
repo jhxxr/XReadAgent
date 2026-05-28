@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Electron main process — window management, sidecar lifecycle, system tray,
- * and native integrations.
+ * application menu, native integrations, and deep link / file association handling.
  *
  * Architecture:
  * - Spawns the Python sidecar on app start
@@ -9,10 +9,14 @@
  * - Loads the React UI once the sidecar is healthy
  * - Hides to system tray on window close (doesn't kill the sidecar)
  * - Cleans up the sidecar on app quit
+ * - Handles `xread://` deep links and `.xread` file associations
+ * - Routes menu actions to the renderer via IPC
  */
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, Tray } from "electron";
 import * as path from "node:path";
 
+import { parseDeepLink, parseXreadFile } from "./deeplink";
+import { buildApplicationMenu } from "./menu";
 import { SidecarManager, resolvePythonPath } from "./sidecar";
 import { SPLASH_HTML, SPLASH_HEIGHT, SPLASH_WIDTH } from "./splash";
 
@@ -42,6 +46,10 @@ const sidecarManager = new SidecarManager(
 let sidecarPort = 0;
 let isQuitting = false;
 
+/** Pending deep link URL or file path received before the main window is ready. */
+let pendingDeepLink: string | null = null;
+let pendingFileOpen: string | null = null;
+
 // ---------------------------------------------------------------------------
 // App lifecycle
 // ---------------------------------------------------------------------------
@@ -51,6 +59,7 @@ app.whenReady().then(async () => {
   sidecarManager.setPythonPath(pythonPath);
 
   createTray();
+  setApplicationMenu();
   await showSplashAndStartSidecar();
 });
 
@@ -71,6 +80,112 @@ app.on("activate", () => {
     createMainWindow();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Deep links (xread:// protocol)
+// ---------------------------------------------------------------------------
+
+// macOS: handles `xread://` URLs from the system.
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  handleDeepLink(url);
+});
+
+// ---------------------------------------------------------------------------
+// File associations (.xread files)
+// ---------------------------------------------------------------------------
+
+// macOS: handles double-clicked files from Finder.
+app.on("open-file", (event, filePath) => {
+  event.preventDefault();
+  handleFileOpen(filePath);
+});
+
+// Windows: process.argv may contain a file path or deep link URL when the
+// app is launched via file association or protocol handler.
+// We also check for second-instance deep link arguments.
+app.on("second-instance", (_event, argv) => {
+  // Find the first argument that looks like a deep link or .xread file.
+  for (const arg of argv.slice(1)) {
+    if (arg.startsWith("xread://")) {
+      handleDeepLink(arg);
+      return;
+    }
+    if (arg.endsWith(".xread")) {
+      handleFileOpen(arg);
+      return;
+    }
+  }
+  // If no deep link found, just focus the window.
+  showMainWindow();
+});
+
+// On Windows, check argv for file paths / deep links at startup.
+// (Only relevant for the primary instance — second-instance is handled above.)
+if (process.platform === "win32" && process.argv.length > 1) {
+  for (const arg of process.argv.slice(1)) {
+    if (arg.startsWith("xread://")) {
+      pendingDeepLink = arg;
+      break;
+    }
+    if (arg.endsWith(".xread")) {
+      pendingFileOpen = arg;
+      break;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Deep link / file open handlers
+// ---------------------------------------------------------------------------
+
+function handleDeepLink(url: string): void {
+  const action = parseDeepLink(url);
+  if (!action) return;
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+    mainWindow.webContents.send("deep-link", action);
+  } else {
+    // Store for later; will be dispatched when the main window is ready.
+    pendingDeepLink = url;
+  }
+}
+
+function handleFileOpen(filePath: string): void {
+  const action = parseXreadFile(filePath);
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+    mainWindow.webContents.send("deep-link", action);
+  } else {
+    // Store for later; will be dispatched when the main window is ready.
+    pendingFileOpen = filePath;
+  }
+}
+
+/**
+ * Dispatch any pending deep link or file open that was received before
+ * the main window finished loading.
+ */
+function dispatchPendingLinks(): void {
+  if (pendingDeepLink) {
+    const action = parseDeepLink(pendingDeepLink);
+    if (action && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("deep-link", action);
+    }
+    pendingDeepLink = null;
+  }
+  if (pendingFileOpen) {
+    const action = parseXreadFile(pendingFileOpen);
+    if (action && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("deep-link", action);
+    }
+    pendingFileOpen = null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Splash window
@@ -175,6 +290,8 @@ function createMainWindow(): BrowserWindow {
   // Show the window once the content is ready.
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show();
+    // Dispatch any pending deep links that arrived before the window was ready.
+    dispatchPendingLinks();
   });
 
   return mainWindow;
@@ -206,17 +323,29 @@ function loadRenderer(win: BrowserWindow): void {
 }
 
 // ---------------------------------------------------------------------------
+// Application menu
+// ---------------------------------------------------------------------------
+
+function setApplicationMenu(): void {
+  const menu = buildApplicationMenu(mainWindow);
+  Menu.setApplicationMenu(menu);
+}
+
+// ---------------------------------------------------------------------------
 // System tray
 // ---------------------------------------------------------------------------
 
 function createTray(): void {
-  // Use a simple 1x1 pixel transparent PNG as a placeholder tray icon.
-  // A real icon should be added to resources/ later.
-  const icon = nativeImage.createEmpty();
+  // Use a 16x16 DataURL icon as a placeholder for the tray.
+  // A proper .ico file should be added to resources/ for the production build.
+  const icon = createTrayIcon();
   tray = new Tray(icon);
 
   const contextMenu = Menu.buildFromTemplate([
     { label: "Show XReadAgent", click: () => showMainWindow() },
+    { type: "separator" },
+    { label: "Open Workspace", click: () => handleTrayOpenWorkspace() },
+    { label: "Preferences", click: () => handleTrayPreferences() },
     { type: "separator" },
     { label: "Restart Sidecar", click: () => restartSidecar() },
     { type: "separator" },
@@ -226,6 +355,47 @@ function createTray(): void {
   tray.setContextMenu(contextMenu);
   tray.setToolTip("XReadAgent");
   tray.on("double-click", () => showMainWindow());
+}
+
+/**
+ * Create a simple 16x16 tray icon as a DataURL placeholder.
+ * The icon is a simple blue square with rounded corners — enough to be
+ * visible in the system tray until a proper icon is designed.
+ */
+function createTrayIcon(): Electron.NativeImage {
+  // 16x16 minimal PNG: blue square with rounded appearance.
+  // This is a temporary placeholder; replace with a proper icon asset.
+  const size = 16;
+  const canvas = Buffer.alloc(size * size * 4);
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      // Create a simple "X" pattern in blue (#3b82f6).
+      const isCenter = (x >= 3 && x <= 12 && y >= 3 && y <= 12);
+      const isEdge = x === 0 || x === 15 || y === 0 || y === 15;
+
+      if (isCenter && !isEdge) {
+        // Blue fill with slight alpha fade at edges.
+        const alpha = (x >= 2 && x <= 13 && y >= 2 && y <= 13) ? 255 : 200;
+        canvas[idx] = 59;     // R
+        canvas[idx + 1] = 130; // G
+        canvas[idx + 2] = 246; // B
+        canvas[idx + 3] = alpha; // A
+      } else {
+        canvas[idx] = 0;
+        canvas[idx + 1] = 0;
+        canvas[idx + 2] = 0;
+        canvas[idx + 3] = 0;
+      }
+    }
+  }
+
+  return nativeImage.createFromBuffer(canvas, {
+    width: size,
+    height: size,
+    scaleFactor: 1.0,
+  });
 }
 
 function showMainWindow(): void {
@@ -255,6 +425,36 @@ async function restartSidecar(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Tray menu action handlers
+// ---------------------------------------------------------------------------
+
+function handleTrayOpenWorkspace(): void {
+  showMainWindow();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    dialog
+      .showOpenDialog(mainWindow, {
+        title: "Open Workspace",
+        properties: ["openDirectory"],
+      })
+      .then((result) => {
+        if (result.canceled || result.filePaths.length === 0) return;
+        const workspacePath = result.filePaths[0]!;
+        mainWindow?.webContents.send("open-workspace", workspacePath);
+      })
+      .catch(() => {
+        // User cancelled or dialog error — silently ignore.
+      });
+  }
+}
+
+function handleTrayPreferences(): void {
+  showMainWindow();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("menu:navigate", "/settings");
+  }
+}
+
+// ---------------------------------------------------------------------------
 // IPC handlers
 // ---------------------------------------------------------------------------
 
@@ -268,7 +468,12 @@ ipcMain.on("get-sidecar-port", (e) => {
 
 ipcMain.on("show-notification", (_event, title: string, body: string) => {
   if (Notification.isSupported()) {
-    new Notification({ title, body }).show();
+    const notification = new Notification({ title, body });
+    notification.on("click", () => {
+      // Bring the window to the foreground when the notification is clicked.
+      showMainWindow();
+    });
+    notification.show();
   }
 });
 

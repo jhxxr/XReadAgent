@@ -14,6 +14,10 @@ export interface SidecarStatus {
   startedAt: string | null;
 }
 
+export type DeepLinkAction =
+  | { type: "navigate"; path: string }
+  | { type: "open-workspace"; path: string };
+
 export interface ElectronAPI {
   /** The current platform: "win32" | "darwin" | "linux". */
   platform: NodeJS.Platform;
@@ -41,6 +45,12 @@ export interface ElectronAPI {
   getSidecarLogs: () => Promise<string[]>;
   /** Request a sidecar restart from the renderer. */
   restartSidecar: () => Promise<void>;
+  /** Register a callback for deep link navigation. */
+  onDeepLink: (callback: (action: DeepLinkAction) => void) => void;
+  /** Register a callback for workspace open requests (from menu or file association). */
+  onOpenWorkspace: (callback: (workspacePath: string) => void) => void;
+  /** Register a callback for menu-driven navigation. */
+  onMenuNavigate: (callback: (path: string) => void) => void;
 }
 
 const api: ElectronAPI = {
@@ -91,6 +101,18 @@ const api: ElectronAPI = {
 
   restartSidecar: () => {
     return ipcRenderer.invoke("sidecar:restart") as Promise<void>;
+  },
+
+  onDeepLink: (callback: (action: DeepLinkAction) => void) => {
+    ipcRenderer.on("deep-link", (_event, action: DeepLinkAction) => callback(action));
+  },
+
+  onOpenWorkspace: (callback: (workspacePath: string) => void) => {
+    ipcRenderer.on("open-workspace", (_event, workspacePath: string) => callback(workspacePath));
+  },
+
+  onMenuNavigate: (callback: (path: string) => void) => {
+    ipcRenderer.on("menu:navigate", (_event, path: string) => callback(path));
   },
 };
 

@@ -17,6 +17,11 @@ export interface SidecarStatus {
   startedAt: string | null;
 }
 
+/** A deep link or file-open action dispatched by the main process. */
+export type DeepLinkAction =
+  | { type: "navigate"; path: string }
+  | { type: "open-workspace"; path: string };
+
 /** The full Electron bridge API surface exposed via contextBridge. */
 export interface ElectronAPI {
   /** The current platform: "win32" | "darwin" | "linux". */
@@ -45,6 +50,12 @@ export interface ElectronAPI {
   getSidecarLogs: () => Promise<string[]>;
   /** Request a sidecar restart from the renderer. */
   restartSidecar: () => Promise<void>;
+  /** Register a callback for deep link navigation. */
+  onDeepLink: (callback: (action: DeepLinkAction) => void) => void;
+  /** Register a callback for workspace open requests (from menu or file association). */
+  onOpenWorkspace: (callback: (workspacePath: string) => void) => void;
+  /** Register a callback for menu-driven navigation. */
+  onMenuNavigate: (callback: (path: string) => void) => void;
 }
 
 declare global {

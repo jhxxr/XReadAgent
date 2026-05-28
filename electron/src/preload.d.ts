@@ -9,7 +9,7 @@ import type { ElectronAPI } from "./preload";
 
 declare global {
   interface Window {
-    electronAPI: ElectronAPI;
+    electronAPI?: ElectronAPI;
     /**
      * The port the Python sidecar is listening on.
      * Injected by the main process after the sidecar becomes ready.

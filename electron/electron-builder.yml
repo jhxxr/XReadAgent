@@ -20,6 +20,19 @@ extraResources:
     filter:
       - "**/*"
 
+# Protocol handler for xread:// deep links.
+protocols:
+  - name: XReadAgent
+    schemes:
+      - xread
+
+# File association for .xread workspace files.
+fileAssociations:
+  - ext: xread
+    name: XReadAgent Workspace
+    description: XReadAgent workspace marker file
+    role: Editor
+
 win:
   target:
     - target: nsis
