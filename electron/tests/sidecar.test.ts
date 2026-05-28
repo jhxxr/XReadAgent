@@ -2,13 +2,14 @@
 /**
  * Unit tests for sidecar module.
  *
- * These tests verify the regex patterns and Python path resolution logic
- * without actually starting Python. Full integration tests for SidecarManager
- * require a running Python sidecar and are not included here.
+ * These tests verify the regex patterns, Python path resolution logic, and
+ * log-buffer behavior without actually starting Python. Full integration
+ * tests for SidecarManager require a running Python sidecar and are not
+ * included here.
  */
 import { describe, it, expect } from "vitest";
 
-import { SIDECAR_READY_RE, resolvePythonPath } from "../src/sidecar";
+import { SIDECAR_READY_RE, resolvePythonPath, SidecarManager } from "../src/sidecar";
 
 // ---------------------------------------------------------------------------
 // SIDECAR_READY_RE
@@ -109,5 +110,35 @@ describe("resolvePythonPath", () => {
       expect(result).toContain("python");
       expect(result).not.toContain(".exe");
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SidecarManager — log buffer
+// ---------------------------------------------------------------------------
+
+describe("SidecarManager log buffer", () => {
+  it("starts with an empty log buffer", () => {
+    const manager = new SidecarManager({ pythonPath: "python" });
+    expect(manager.getLogs()).toEqual([]);
+  });
+
+  it("getLogs returns a copy of the buffer", () => {
+    const manager = new SidecarManager({ pythonPath: "python" });
+    const logs = manager.getLogs();
+    logs.push("extra");
+    // Original buffer is not modified.
+    expect(manager.getLogs()).toEqual([]);
+  });
+
+  it("getStatus returns idle state when not started", () => {
+    const manager = new SidecarManager({ pythonPath: "python" });
+    const status = manager.getStatus();
+    expect(status).toEqual({
+      status: "idle",
+      pid: null,
+      port: null,
+      startedAt: null,
+    });
   });
 });

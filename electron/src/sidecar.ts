@@ -26,6 +26,9 @@ const MAX_RESTART_ATTEMPTS = 3;
 /** Exponential backoff base delay in ms between restart attempts. */
 const RESTART_BACKOFF_MS = 1_000;
 
+/** Maximum number of log lines to retain in the circular buffer. */
+const MAX_LOG_LINES = 200;
+
 export interface SidecarOptions {
   /** Absolute path to the Python interpreter. */
   pythonPath: string;
@@ -61,6 +64,10 @@ export class SidecarManager {
   private restartCount = 0;
   private options: SidecarOptions;
   private onStatusChange?: (status: string, detail?: string) => void;
+  /** Circular buffer of recent stdout + stderr lines. */
+  private logBuffer: string[] = [];
+  /** ISO timestamp when the sidecar last entered the "running" state. */
+  private startedAt: string | null = null;
 
   constructor(
     options: SidecarOptions,
@@ -89,6 +96,29 @@ export class SidecarManager {
     }
   }
 
+  /** Return a structured status object for the IPC handler. */
+  getStatus(): { status: SidecarState["status"] | "crashed"; pid: number | null; port: number | null; startedAt: string | null } {
+    if (this.state.status === "running") {
+      return {
+        status: "running",
+        pid: this.state.handle.pid,
+        port: this.state.handle.port,
+        startedAt: this.startedAt,
+      };
+    }
+    return {
+      status: this.state.status,
+      pid: null,
+      port: null,
+      startedAt: null,
+    };
+  }
+
+  /** Return the last MAX_LOG_LINES lines of sidecar output. */
+  getLogs(): string[] {
+    return [...this.logBuffer];
+  }
+
   /** Start the sidecar and wait until `/healthz` returns 200. */
   async start(): Promise<SidecarHandle> {
     if (this.state.status === "running") {
@@ -109,10 +139,14 @@ export class SidecarManager {
       };
       this.state = { status: "running", handle, proc };
 
+      // Record when the sidecar became ready.
+      this.startedAt = new Date().toISOString();
+
       // Auto-restart on unexpected exit.
       proc.on("exit", (code, signal) => {
         if (this.state.status === "running") {
           this.state = { status: "stopped" };
+          this.startedAt = null;
           this.emit("crashed", `Sidecar exited with code=${code}, signal=${signal}`);
           this.attemptRestart();
         }
@@ -169,6 +203,7 @@ export class SidecarManager {
       for (const line of chunk.toString().split("\n")) {
         if (line.trim()) {
           this.emit("stdout", line.trimEnd());
+          this.appendLog(`[out] ${line.trimEnd()}`);
         }
       }
     });
@@ -177,6 +212,7 @@ export class SidecarManager {
       for (const line of chunk.toString().split("\n")) {
         if (line.trim()) {
           this.emit("stderr", line.trimEnd());
+          this.appendLog(`[err] ${line.trimEnd()}`);
         }
       }
     });
@@ -325,6 +361,14 @@ export class SidecarManager {
 
   private emit(status: string, detail?: string): void {
     this.onStatusChange?.(status, detail);
+  }
+
+  /** Append a line to the circular log buffer. */
+  private appendLog(line: string): void {
+    this.logBuffer.push(line);
+    if (this.logBuffer.length > MAX_LOG_LINES) {
+      this.logBuffer.splice(0, this.logBuffer.length - MAX_LOG_LINES);
+    }
   }
 }
 

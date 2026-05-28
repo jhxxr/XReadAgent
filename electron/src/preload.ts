@@ -7,6 +7,13 @@
  */
 import { contextBridge, ipcRenderer } from "electron";
 
+export interface SidecarStatus {
+  status: "idle" | "starting" | "running" | "stopped" | "crashed";
+  pid: number | null;
+  port: number | null;
+  startedAt: string | null;
+}
+
 export interface ElectronAPI {
   /** The current platform: "win32" | "darwin" | "linux". */
   platform: NodeJS.Platform;
@@ -28,6 +35,12 @@ export interface ElectronAPI {
   showOpenFolderDialog: (title?: string) => Promise<string[]>;
   /** Show a native notification. */
   showNotification: (title: string, body: string) => void;
+  /** Query the current sidecar status (running/stopped/pid/port). */
+  getSidecarStatus: () => Promise<SidecarStatus>;
+  /** Fetch recent sidecar log lines (stdout + stderr). */
+  getSidecarLogs: () => Promise<string[]>;
+  /** Request a sidecar restart from the renderer. */
+  restartSidecar: () => Promise<void>;
 }
 
 const api: ElectronAPI = {
@@ -66,6 +79,18 @@ const api: ElectronAPI = {
 
   showNotification: (title: string, body: string) => {
     ipcRenderer.send("show-notification", title, body);
+  },
+
+  getSidecarStatus: () => {
+    return ipcRenderer.invoke("sidecar:status") as Promise<SidecarStatus>;
+  },
+
+  getSidecarLogs: () => {
+    return ipcRenderer.invoke("sidecar:logs") as Promise<string[]>;
+  },
+
+  restartSidecar: () => {
+    return ipcRenderer.invoke("sidecar:restart") as Promise<void>;
   },
 };
 

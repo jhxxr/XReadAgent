@@ -15,29 +15,28 @@ import type {
   UpdateSettingsRequest,
   WikiPageResponse,
 } from "@/types/api";
+import { getApiBaseUrl, getWsBaseUrl, getSidecarBaseUrl } from "@/lib/platform";
 
 /**
- * Fixed dev-mode base for the Python sidecar.
+ * Base URL for all HTTP API calls to the Python sidecar.
  *
- * In dev (Vite), `/api/*` is proxied to `http://localhost:8765/*` (see
- * `vite.config.ts`). The Electron production wrapper (Phase 3) will inject
- * the random port the sidecar reports via `SIDECAR_READY port=<N>` and the
- * renderer will read it from `window.__XREAD_API__`.
+ * Resolved dynamically so that Electron production mode (direct `127.0.0.1`
+ * connection) and browser dev mode (Vite proxy) both work without code
+ * changes. Prefer `getApiBaseUrl()` from `platform.ts` for new code.
  */
-export const apiBase: string = (import.meta.env.VITE_API_BASE as string | undefined) ?? "/api";
+export function getApiBase(): string {
+  return (import.meta.env.VITE_API_BASE as string | undefined) ?? getApiBaseUrl();
+}
 
 /**
- * Base for the WebSocket proxy. Vite proxies `/ws/*` to
- * `ws://localhost:8765/*` (see `vite.config.ts`). Phase 3 will mirror
- * `apiBase`'s injection mechanism.
+ * Base URL for WebSocket connections to the Python sidecar.
+ *
+ * In browser dev mode this resolves to `ws://localhost:{vitePort}` (Vite
+ * proxies the upgrade). In Electron it resolves to `ws://127.0.0.1:{port}`.
  */
-export const wsBase: string =
-  (import.meta.env.VITE_WS_BASE as string | undefined) ??
-  // Default: resolve relative to the current origin. The Vite proxy handles
-  // the actual upgrade to `ws://localhost:8765` in dev mode.
-  (typeof window !== "undefined"
-    ? `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`
-    : "ws://localhost:5173");
+export function getWsBase(): string {
+  return (import.meta.env.VITE_WS_BASE as string | undefined) ?? getWsBaseUrl();
+}
 
 export class ApiError extends Error {
   override readonly name = "ApiError";
@@ -50,7 +49,8 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = `${apiBase}${path}`;
+  const base = getApiBase();
+  const url = `${base}${path}`;
   let response: Response;
   try {
     response = await fetch(url, {
@@ -74,8 +74,30 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+/**
+ * Fetch the sidecar health check.
+ *
+ * The `/healthz` endpoint is the only sidecar route NOT under `/api`, so it
+ * needs a different base URL from the rest of the API.
+ */
 export async function getHealthz(): Promise<HealthzResponse> {
-  return request<HealthzResponse>("/healthz");
+  const base = (import.meta.env.VITE_SIDECAR_BASE as string | undefined) ?? getSidecarBaseUrl();
+  const url = `${base}/healthz`;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: { Accept: "application/json" },
+    });
+  } catch (cause) {
+    throw new ApiError(
+      `Network error contacting sidecar at ${url}: ${(cause as Error).message}`,
+      0,
+    );
+  }
+  if (!response.ok) {
+    throw new ApiError(`Sidecar returned ${response.status} on /healthz`, response.status);
+  }
+  return (await response.json()) as HealthzResponse;
 }
 
 /**
@@ -88,7 +110,7 @@ export async function getHealthz(): Promise<HealthzResponse> {
 export async function getTranslationsManifest(
   workspacePath: string,
 ): Promise<TranslationsManifest> {
-  const url = `${apiBase}/translations/manifest?workspacePath=${encodeURIComponent(workspacePath)}`;
+  const url = `${getApiBase()}/translations/manifest?workspacePath=${encodeURIComponent(workspacePath)}`;
   let response: Response;
   try {
     response = await fetch(url, { headers: { Accept: "application/json" } });
@@ -123,7 +145,7 @@ export function buildWorkspaceFileUrl(workspacePath: string, relativePath: strin
     workspacePath,
     path: relativePath,
   });
-  return `${apiBase}/workspaces/file?${params.toString()}`;
+  return `${getApiBase()}/workspaces/file?${params.toString()}`;
 }
 
 /** Start a translation job. Returns the new `jobId` on success. */
@@ -137,7 +159,7 @@ export async function postTranslate(req: TranslateRequest): Promise<TranslateRes
 
 /** Build the WS URL for streaming events of `jobId`. */
 export function buildJobEventsWsUrl(jobId: string): string {
-  return `${wsBase}/ws/jobs/${encodeURIComponent(jobId)}`;
+  return `${getWsBase()}/ws/jobs/${encodeURIComponent(jobId)}`;
 }
 
 // ---------------------------------------------------------------------------

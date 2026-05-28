@@ -281,6 +281,22 @@ ipcMain.handle("show-open-folder-dialog", async (_event, title?: string) => {
 });
 
 // ---------------------------------------------------------------------------
+// Sidecar management IPC handlers
+// ---------------------------------------------------------------------------
+
+ipcMain.handle("sidecar:status", () => {
+  return sidecarManager.getStatus();
+});
+
+ipcMain.handle("sidecar:logs", () => {
+  return sidecarManager.getLogs();
+});
+
+ipcMain.handle("sidecar:restart", async () => {
+  await restartSidecar();
+});
+
+// ---------------------------------------------------------------------------
 // Broadcast helpers
 // ---------------------------------------------------------------------------
 
