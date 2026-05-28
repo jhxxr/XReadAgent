@@ -48,6 +48,42 @@ For each boundary:
 
 ---
 
+## Electron ↔ Renderer Boundary (Phase 3)
+
+The Electron shell adds a new cross-layer boundary between the main process (Node.js) and the renderer (React). This boundary has its own contract:
+
+### Data Flow
+
+```
+Python sidecar ←─HTTP/WS──→ Renderer (React)
+                                 ↕ IPC (contextBridge)
+                           Main process (Node.js)
+```
+
+The renderer talks to the Python sidecar directly via HTTP/WebSocket (using `platform.ts` URLs). The main process only handles OS concerns (tray, menu, file dialogs, notifications). **Never route sidecar API calls through IPC.**
+
+### Key Rules
+
+1. **All renderer↔main communication goes through `window.electronAPI`** — defined in `electron/src/preload.ts`, typed in `frontend/src/types/electron.d.ts`. Never use `require()` or `nodeIntegration` in the renderer.
+
+2. **`platform.ts` is the single source of truth for dual-environment URLs** — `getApiBaseUrl()` returns `/api` in browser mode and `http://127.0.0.1:{port}/api` in Electron mode. Never hardcode `localhost:8765` in frontend code.
+
+3. **Deep links go through IPC** — `xread://` URLs arrive at main process, get parsed by `deeplink.ts`, and forwarded to renderer via `onDeepLink()`. The renderer uses TanStack Router to navigate.
+
+4. **Sidecar lifecycle is managed by the main process** — The renderer can query status (`getSidecarStatus()`), read logs (`getSidecarLogs()`), and request restart (`restartSidecar()`), but spawn/shutdown/health-check happen exclusively in `SidecarManager`.
+
+5. **WebSocket URL construction** — `getWsBaseUrl()` returns the correct base for the environment. `buildJobEventsWsUrl()` appends `/ws/jobs/{id}`. Never double-prefix (`/ws/ws/...`).
+
+6. **The `/healthz` endpoint** is NOT under `/api` — it lives at the sidecar root. Use `getSidecarBaseUrl()` (not `getApiBaseUrl()`) for health checks in Electron mode.
+
+### Common Mistakes
+
+- **Double-prefixing WebSocket URLs** — `getWsBaseUrl()` returns `ws://127.0.0.1:{port}` (no `/ws` suffix). `buildJobEventsWsUrl()` adds `/ws/jobs/{id}`. Result: `ws://127.0.0.1:{port}/ws/jobs/{id}`. If `getWsBaseUrl()` returned `ws://.../ws`, you'd get `ws://.../ws/ws/jobs/{id}`.
+
+- **Using `/api/healthz`** — The healthz endpoint is at `/healthz`, not `/api/healthz`. In browser dev mode this works because Vite proxy strips `/api`, but in Electron production mode it returns 404. Use `getSidecarBaseUrl()` for health checks.
+
+---
+
 ## Common Cross-Layer Mistakes
 
 ### Mistake 1: Implicit Format Assumptions

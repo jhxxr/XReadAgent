@@ -14,7 +14,7 @@ The frontend (`frontend/`) is the desktop renderer for XReadAgent. It is:
 - **shadcn-style** UI primitives under `frontend/src/components/ui/` — local wrappers around Radix primitives with `class-variance-authority` (CVA) variants and a `data-slot="..."` styling hook.
 - **Vitest + Testing Library + jsdom** for unit / component tests under `frontend/tests/`.
 
-Phase 0+1 shipped the renderer skeleton: app shell (`AppShell` + `AppSidebar` + `HealthBanner` + `CopilotSidebar`), four routes (`/workspace`, `/paper`, `/paper/$slug`, `/queries`), a theme system, and a typed `apiBase` client with `ApiError`. Phase 2 wires real ingest/query/crystallize endpoints into the shell. Phase 3 wraps everything in Electron and reads the sidecar port from `window.__XREAD_API__`.
+Phase 0+1 shipped the renderer skeleton: app shell (`AppShell` + `AppSidebar` + `HealthBanner` + `CopilotSidebar`), four routes (`/workspace`, `/paper`, `/paper/$slug`, `/queries`), a theme system, and a typed `apiBase` client with `ApiError`. Phase 2 wires real ingest/query/crystallize endpoints into the shell. Phase 3 wraps everything in Electron and adds dual-environment support via `platform.ts` (browser mode via Vite proxy, Electron mode via direct HTTP/WS to sidecar), native integrations (tray, menu, file associations, deep links, notifications), and a Sidecar status tab in Settings.
 
 `AGPL-3.0-or-later`. Every TypeScript/TSX source file starts with an SPDX header — see `frontend/src/main.tsx:1`.
 
@@ -60,4 +60,7 @@ Don't add a new UI primitive, state library, or icon set without updating both `
 - Entrypoint: `frontend/src/main.tsx` → `<StrictMode>` → `<App />` (`frontend/src/app.tsx`).
 - Providers wrap order (outer → inner): `ThemeProvider` → `QueryClientProvider` → `TooltipProvider` → `RouterProvider`, with a `<Toaster>` sibling. See `frontend/src/app.tsx`.
 - Route tree: `frontend/src/router.tsx` — flat `addChildren` list under one `createRootRoute({ component: AppShell })`.
-- API base: `apiBase` in `frontend/src/lib/api.ts` reads `import.meta.env.VITE_API_BASE` or defaults to `/api`. The dev Vite proxy rewrites `/api` → `http://localhost:8765` (`frontend/vite.config.ts`).
+- API base: `getApiBaseUrl()` in `frontend/src/lib/api.ts` reads `import.meta.env.VITE_API_BASE` or falls back to `platform.ts` which detects Electron vs browser mode. In browser: `/api` (Vite proxy). In Electron: `http://127.0.0.1:{port}/api` (direct to sidecar). WebSocket base: `getWsBaseUrl()` follows the same pattern.
+- Electron bridge: `frontend/src/types/electron.d.ts` mirrors `electron/src/preload.ts`. In browser mode, `window.electronAPI` is `undefined` — all calls gracefully degrade.
+- Platform detection: `frontend/src/lib/platform.ts` provides `isElectron()`, `getApiBaseUrl()`, `getWsBaseUrl()`, `getSidecarPort()`, `onDeepLink()`, `onOpenWorkspace()`, `onMenuNavigate()`. Use these instead of accessing `window.electronAPI` directly.
+- Notifications: `frontend/src/lib/notifications.ts` provides `notifyOnCompletion()` — uses Electron IPC in desktop mode, Web Notification API in browser mode.

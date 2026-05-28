@@ -12,7 +12,7 @@ XReadAgent's Python backend is the **single sidecar process** that:
 - Routes documents through markitdown / MinerU converters.
 - Drives the deepagents-based ingest, query, and crystallize agents on top of LangChain 1.x.
 - (Phase 2) Wraps BabelDOC for layout-preserving PDF translation in an isolated subprocess.
-- (Phase 3) Wraps as an Electron desktop app.
+- (Phase 3) Wraps as an Electron desktop app. The Electron main process spawns the sidecar with `--port 0`, reads `SIDECAR_READY port=<N>` from stdout, and polls `/healthz` until 200. The renderer communicates with the sidecar over HTTP/WS on `127.0.0.1:<port>`, using `platform.ts` for dual-environment URL resolution.
 
 It runs as a FastAPI server on `127.0.0.1:<random>` and emits the `SIDECAR_READY port=<N>` contract on stdout so the Electron loader (or a dev-mode browser tab) can find it.
 
@@ -63,7 +63,7 @@ These are the rules a sub-agent must follow without re-litigating:
 | Phase 1B-2 (React/Vite/shadcn frontend skeleton) | Complete |  |
 | Phase 2A (BabelDOC translation backend + API + CLI) | Complete | (this dispatch) |
 | Phase 2B (PDF.js reader + Translate dialog) | Next |  |
-| Phase 3 (Lint agent + Electron wrapper + code signing) | Planned |  |
+| Phase 3 (Electron wrapper + native integrations + packaging) | Complete | `165947c..676fd84` |
 | Phase 4 (sqlite-vec + MCP + macOS) | Planned |  |
 
 See `.trellis/tasks/05-22-build-sciresearch-agent-literature-reading-knowledge-base/plan.md` for the full roadmap.

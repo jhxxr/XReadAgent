@@ -35,6 +35,13 @@ frontend/
     └── routes/<name>.test.tsx
 ```
 
+New in Phase 3 (Electron wrapper):
+
+- `src/lib/platform.ts` — Dual-environment detection: `isElectron()`, `getApiBaseUrl()`, `getWsBaseUrl()`, `onDeepLink()`, `onOpenWorkspace()`, `onMenuNavigate()`.
+- `src/lib/notifications.ts` — Cross-platform notifications: Electron IPC in desktop mode, Web Notification API fallback in browser mode.
+- `src/types/electron.d.ts` — Type declarations for `window.electronAPI` (mirrors `electron/src/preload.ts`).
+- `src/components/settings/sidecar-tab.tsx` — Sidecar status UI (running/stopped/crashed badge, PID, port, logs, restart button).
+
 `dist/`, `node_modules/`, `coverage/`, `.vite/` are ignored everywhere (gitignore + `eslint.config.js` `ignores`).
 
 ---
@@ -49,9 +56,11 @@ frontend/
 
 **Routes** (`src/routes/<name>.tsx`) export a single named component (`<PaperRoute />`, `<QueriesRoute />`) and are registered in `src/router.tsx` via `createRoute({ component: ... })`. Route files own page layout and call into `components/<feature>/...` for non-trivial subtrees.
 
-**`lib/`** — code that talks to the runtime (browser, sidecar, react). One file per concern: `api.ts` (HTTP client), `theme.tsx` (theme context + provider + hook), `utils.ts` (`cn()` only). Add new files freely; resist barrel `index.ts` re-exports.
+**`lib/`** — code that talks to the runtime (browser, sidecar, react). One file per concern: `api.ts` (HTTP client), `theme.tsx` (theme context + provider + hook), `utils.ts` (`cn()` only), `platform.ts` (Electron detection + dual-environment URLs), `notifications.ts` (cross-platform notifications). Add new files freely; resist barrel `index.ts` re-exports.
 
 **`types/api.ts`** mirrors the Pydantic schemas exposed by the Python sidecar (`HealthzResponse`, `PaperSummary`, …). Every new sidecar endpoint adds a TS interface here before anything calls it.
+
+**`types/electron.d.ts`** mirrors the Electron preload bridge API (`ElectronAPI`, `SidecarStatus`, `SidecarRestartInfo`, `DeepLinkAction`). Only present when the app runs in Electron; in browser mode `window.electronAPI` is `undefined`.
 
 ---
 
