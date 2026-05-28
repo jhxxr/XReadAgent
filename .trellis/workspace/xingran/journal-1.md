@@ -250,3 +250,37 @@ Implemented copilot sidebar (non-modal slide-in panel with ask/answer and eviden
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: Test coverage: settings API + frontend routes + shell components
+
+**Date**: 2026-05-28
+**Task**: Test coverage: settings API + frontend routes + shell components
+**Branch**: `main`
+
+### Summary
+
+Added 48 new tests: 25 backend (settings module: model validation, load/save/merge, GET/PUT endpoints) + 23 frontend (concept, paper-index, queries routes + app-sidebar, health-banner shell components). Updated spec guidelines with vi.hoisted, importOriginal, matchMedia re-installation, and monkeypatch module-global patching patterns.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0f652f5` | (see git log) |
+| `11a7cd7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
