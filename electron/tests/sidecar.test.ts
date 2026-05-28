@@ -10,6 +10,7 @@
 import { describe, it, expect } from "vitest";
 
 import { SIDECAR_READY_RE, resolvePythonPath, SidecarManager } from "../src/sidecar";
+import type { SidecarRestartInfo } from "../src/sidecar";
 
 // ---------------------------------------------------------------------------
 // SIDECAR_READY_RE
@@ -139,6 +140,39 @@ describe("SidecarManager log buffer", () => {
       pid: null,
       port: null,
       startedAt: null,
+      restartCount: 0,
     });
+  });
+
+  it("getRestartInfo returns null when no restart is in progress", () => {
+    const manager = new SidecarManager({ pythonPath: "python" });
+    expect(manager.getRestartInfo()).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SidecarManager — restart event emission
+// ---------------------------------------------------------------------------
+
+describe("SidecarManager restart events", () => {
+  it("SidecarRestartInfo shape matches the interface", () => {
+    const info: SidecarRestartInfo = {
+      attempt: 1,
+      maxAttempts: 3,
+      delayMs: 1000,
+    };
+
+    // Verify all required fields are present and typed correctly.
+    expect(typeof info.attempt).toBe("number");
+    expect(typeof info.maxAttempts).toBe("number");
+    expect(typeof info.delayMs).toBe("number");
+  });
+
+  it("getStatus includes restartCount field", () => {
+    const manager = new SidecarManager({ pythonPath: "python" });
+    const status = manager.getStatus();
+    expect(status).toHaveProperty("restartCount");
+    expect(typeof status.restartCount).toBe("number");
+    expect(status.restartCount).toBe(0);
   });
 });

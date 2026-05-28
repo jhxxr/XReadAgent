@@ -29,6 +29,16 @@ const RESTART_BACKOFF_MS = 1_000;
 /** Maximum number of log lines to retain in the circular buffer. */
 const MAX_LOG_LINES = 200;
 
+/** Information about a sidecar crash-restart cycle, sent to the renderer. */
+export interface SidecarRestartInfo {
+  /** Which restart attempt this is (1-based). */
+  attempt: number;
+  /** Maximum number of restart attempts before giving up. */
+  maxAttempts: number;
+  /** Delay in ms before the next restart attempt. */
+  delayMs: number;
+}
+
 export interface SidecarOptions {
   /** Absolute path to the Python interpreter. */
   pythonPath: string;
@@ -63,15 +73,17 @@ export class SidecarManager {
   private state: SidecarState = { status: "idle" };
   private restartCount = 0;
   private options: SidecarOptions;
-  private onStatusChange?: (status: string, detail?: string) => void;
+  private onStatusChange?: (status: string, detail?: string, restartInfo?: SidecarRestartInfo) => void;
   /** Circular buffer of recent stdout + stderr lines. */
   private logBuffer: string[] = [];
   /** ISO timestamp when the sidecar last entered the "running" state. */
   private startedAt: string | null = null;
+  /** Most recent restart info (null if no restart is in progress). */
+  private currentRestartInfo: SidecarRestartInfo | null = null;
 
   constructor(
     options: SidecarOptions,
-    onStatusChange?: (status: string, detail?: string) => void,
+    onStatusChange?: (status: string, detail?: string, restartInfo?: SidecarRestartInfo) => void,
   ) {
     this.options = options;
     this.onStatusChange = onStatusChange;
@@ -97,13 +109,14 @@ export class SidecarManager {
   }
 
   /** Return a structured status object for the IPC handler. */
-  getStatus(): { status: SidecarState["status"] | "crashed"; pid: number | null; port: number | null; startedAt: string | null } {
+  getStatus(): { status: SidecarState["status"] | "crashed"; pid: number | null; port: number | null; startedAt: string | null; restartCount: number } {
     if (this.state.status === "running") {
       return {
         status: "running",
         pid: this.state.handle.pid,
         port: this.state.handle.port,
         startedAt: this.startedAt,
+        restartCount: this.restartCount,
       };
     }
     return {
@@ -111,7 +124,13 @@ export class SidecarManager {
       pid: null,
       port: null,
       startedAt: null,
+      restartCount: this.restartCount,
     };
+  }
+
+  /** Return the current restart info, or null if no restart is in progress. */
+  getRestartInfo(): SidecarRestartInfo | null {
+    return this.currentRestartInfo;
   }
 
   /** Return the last MAX_LOG_LINES lines of sidecar output. */
@@ -341,26 +360,35 @@ export class SidecarManager {
 
   private async attemptRestart(): Promise<void> {
     if (this.restartCount >= MAX_RESTART_ATTEMPTS) {
+      this.currentRestartInfo = null;
       this.emit("fatal", `Sidecar crashed ${MAX_RESTART_ATTEMPTS} times; giving up.`);
       return;
     }
 
     this.restartCount++;
     const delay = RESTART_BACKOFF_MS * Math.pow(2, this.restartCount - 1);
-    this.emit("restarting", `Attempt ${this.restartCount}/${MAX_RESTART_ATTEMPTS} in ${delay}ms`);
+    const info: SidecarRestartInfo = {
+      attempt: this.restartCount,
+      maxAttempts: MAX_RESTART_ATTEMPTS,
+      delayMs: delay,
+    };
+    this.currentRestartInfo = info;
+    this.emit("restarting", `Attempt ${this.restartCount}/${MAX_RESTART_ATTEMPTS} in ${delay}ms`, info);
 
     await new Promise((resolve) => setTimeout(resolve, delay));
 
     try {
       await this.start();
+      // Successfully restarted — clear restart info.
+      this.currentRestartInfo = null;
     } catch {
       // `start()` already emitted an error; `attemptRestart` will be called
-      // again if the process crashes again.
+      // again if the process crashes again. Keep restartInfo for UI display.
     }
   }
 
-  private emit(status: string, detail?: string): void {
-    this.onStatusChange?.(status, detail);
+  private emit(status: string, detail?: string, restartInfo?: SidecarRestartInfo): void {
+    this.onStatusChange?.(status, detail, restartInfo);
   }
 
   /** Append a line to the circular log buffer. */

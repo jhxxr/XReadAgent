@@ -15,6 +15,17 @@ export interface SidecarStatus {
   pid: number | null;
   port: number | null;
   startedAt: string | null;
+  restartCount: number;
+}
+
+/** Information about a sidecar crash-restart cycle. */
+export interface SidecarRestartInfo {
+  /** Which restart attempt this is (1-based). */
+  attempt: number;
+  /** Maximum number of restart attempts before giving up. */
+  maxAttempts: number;
+  /** Delay in ms before the next restart attempt. */
+  delayMs: number;
 }
 
 /** A deep link or file-open action dispatched by the main process. */
@@ -50,6 +61,10 @@ export interface ElectronAPI {
   getSidecarLogs: () => Promise<string[]>;
   /** Request a sidecar restart from the renderer. */
   restartSidecar: () => Promise<void>;
+  /** Register a callback for sidecar restarting events (crash auto-restart). */
+  onSidecarRestarting: (callback: (info: SidecarRestartInfo) => void) => void;
+  /** Get the current restart info, or null if no restart is in progress. */
+  getSidecarRestartInfo: () => Promise<SidecarRestartInfo | null>;
   /** Register a callback for deep link navigation. */
   onDeepLink: (callback: (action: DeepLinkAction) => void) => void;
   /** Register a callback for workspace open requests (from menu or file association). */

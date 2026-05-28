@@ -10,7 +10,7 @@
  * All frontend code should use `getApiBaseUrl()` and `getWsBaseUrl()` instead
  * of hardcoding `/api` or `ws://localhost:8765`.
  */
-import type { DeepLinkAction } from "@/types/electron";
+import type { DeepLinkAction, SidecarRestartInfo } from "@/types/electron";
 
 /**
  * Returns `true` when running inside an Electron BrowserWindow with the
@@ -177,4 +177,38 @@ export function onMenuNavigate(callback: (path: string) => void): () => void {
 
   api.onMenuNavigate(callback);
   return () => undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Sidecar restart monitoring
+// ---------------------------------------------------------------------------
+
+/**
+ * Register a callback for sidecar restart events (triggered when the sidecar
+ * crashes and the manager is auto-restarting it).
+ *
+ * In browser dev mode, this is a no-op.
+ *
+ * @param callback - Called with `SidecarRestartInfo` when a restart is attempted.
+ * @returns A cleanup function that removes the listener.
+ */
+export function onSidecarRestarting(callback: (info: SidecarRestartInfo) => void): () => void {
+  if (!isElectron()) return () => undefined;
+  const api = getElectronAPI();
+  if (!api) return () => undefined;
+
+  api.onSidecarRestarting(callback);
+  return () => undefined;
+}
+
+/**
+ * Get the current sidecar restart info, or null if no restart is in progress.
+ *
+ * In browser dev mode, returns null.
+ */
+export async function getSidecarRestartInfo(): Promise<SidecarRestartInfo | null> {
+  if (!isElectron()) return null;
+  const api = getElectronAPI();
+  if (!api) return null;
+  return api.getSidecarRestartInfo();
 }

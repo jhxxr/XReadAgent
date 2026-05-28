@@ -38,8 +38,8 @@ let tray: Tray | null = null;
 /** Sidecar manager instance — initialized with placeholder pythonPath, updated on app ready. */
 const sidecarManager = new SidecarManager(
   { pythonPath: "placeholder" },
-  (status, detail) => {
-    broadcastSidecarStatus(status, detail);
+  (status, detail, restartInfo) => {
+    broadcastSidecarStatus(status, detail, restartInfo);
   },
 );
 
@@ -219,8 +219,25 @@ async function showSplashAndStartSidecar(): Promise<void> {
   // Handle retry from splash error screen.
   // Remove any existing listener first to avoid stacking.
   ipcMain.removeAllListeners("splash-retry");
-  ipcMain.on("splash-retry", () => {
-    showSplashAndStartSidecar();
+  ipcMain.on("splash-retry", async () => {
+    // Attempt to restart the sidecar from the error screen.
+    // This re-spawns the Python process rather than reloading the entire app.
+    try {
+      await sidecarManager.shutdown();
+      sidecarPort = 0;
+      const handle = await sidecarManager.start();
+      sidecarPort = handle.port;
+
+      // Close splash and open main window on success.
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        splashWindow.close();
+      }
+      splashWindow = null;
+      createMainWindow();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error starting sidecar";
+      splashWindow?.webContents.send("splash-error", message);
+    }
   });
 
   try {
@@ -501,11 +518,15 @@ ipcMain.handle("sidecar:restart", async () => {
   await restartSidecar();
 });
 
+ipcMain.handle("sidecar:restart-info", () => {
+  return sidecarManager.getRestartInfo();
+});
+
 // ---------------------------------------------------------------------------
 // Broadcast helpers
 // ---------------------------------------------------------------------------
 
-function broadcastSidecarStatus(status: string, detail?: string): void {
+function broadcastSidecarStatus(status: string, detail?: string, restartInfo?: import("./sidecar").SidecarRestartInfo): void {
   // Send to splash window.
   if (splashWindow && !splashWindow.isDestroyed()) {
     splashWindow.webContents.send("splash-status", `${status}${detail ? `: ${detail}` : ""}`);
@@ -513,5 +534,8 @@ function broadcastSidecarStatus(status: string, detail?: string): void {
   // Send to main window.
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("sidecar-status", status, detail);
+    if (restartInfo) {
+      mainWindow.webContents.send("sidecar:restarting", restartInfo);
+    }
   }
 }

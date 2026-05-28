@@ -5,8 +5,10 @@ import {
   getApiBaseUrl,
   getSidecarBaseUrl,
   getSidecarPort,
+  getSidecarRestartInfo,
   getWsBaseUrl,
   isElectron,
+  onSidecarRestarting,
 } from "@/lib/platform";
 
 // Save original window properties so we can restore them.
@@ -21,6 +23,7 @@ function installMockElectronAPI(overrides: { getSidecarPort: () => number }): vo
     getSidecarPort: overrides.getSidecarPort,
     onSidecarReady: vi.fn(),
     onSidecarStatus: vi.fn(),
+    onSidecarRestarting: vi.fn(),
     onSplashStatus: vi.fn(),
     onSplashError: vi.fn(),
     sendSplashRetry: vi.fn(),
@@ -28,6 +31,7 @@ function installMockElectronAPI(overrides: { getSidecarPort: () => number }): vo
     showNotification: vi.fn(),
     getSidecarStatus: vi.fn().mockResolvedValue({}),
     getSidecarLogs: vi.fn().mockResolvedValue([]),
+    getSidecarRestartInfo: vi.fn().mockResolvedValue(null),
     restartSidecar: vi.fn().mockResolvedValue(undefined),
   };
 }
@@ -120,6 +124,47 @@ describe("platform", () => {
       installMockElectronAPI({ getSidecarPort: () => 0 });
       const result = getWsBaseUrl();
       expect(result).toMatch(/^wss?:\/\//);
+    });
+  });
+
+  describe("onSidecarRestarting", () => {
+    it("returns a no-op cleanup function in browser mode", () => {
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
+      const cleanup = onSidecarRestarting(() => {});
+      expect(typeof cleanup).toBe("function");
+      // Should not throw.
+      cleanup();
+    });
+
+    it("registers a callback via electronAPI in Electron mode", () => {
+      installMockElectronAPI({ getSidecarPort: () => 12345 });
+      const callback = vi.fn();
+      const cleanup = onSidecarRestarting(callback);
+      expect(typeof cleanup).toBe("function");
+
+      // Verify that onSidecarRestarting was called on the API.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      const api = (globalThis.window as any).electronAPI;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      expect(api.onSidecarRestarting).toHaveBeenCalledWith(callback);
+    });
+  });
+
+  describe("getSidecarRestartInfo", () => {
+    it("returns null in browser mode", async () => {
+      const result = await getSidecarRestartInfo();
+      expect(result).toBeNull();
+    });
+
+    it("delegates to electronAPI in Electron mode", async () => {
+      installMockElectronAPI({ getSidecarPort: () => 12345 });
+      const result = await getSidecarRestartInfo();
+      expect(result).toBeNull();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      const api = (globalThis.window as any).electronAPI;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      expect(api.getSidecarRestartInfo).toHaveBeenCalled();
     });
   });
 });
