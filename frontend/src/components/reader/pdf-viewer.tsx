@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { getDocument, type PDFDocumentProxy, type PDFPageProxy } from "pdfjs-dist";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  getDocument,
+  InvalidPDFException,
+  type PDFDocumentLoadingTask,
+  type PDFDocumentProxy,
+} from "pdfjs-dist";
 import * as React from "react";
 
 import { ensurePdfWorker } from "@/lib/pdfjs";
+import { usePageRenderer } from "@/lib/use-page-renderer";
 import { cn } from "@/lib/utils";
 
 /**
@@ -33,44 +40,73 @@ interface LoadState {
   status: "loading" | "ready" | "error";
   doc: PDFDocumentProxy | null;
   error: string | null;
+  /** Fraction of document bytes downloaded (0–1), null while unknown. */
+  progress: number | null;
 }
 
 /**
- * Thin wrapper around pdfjs-dist that renders all pages of a PDF.
+ * Detect password-protected PDF errors by name, since `PasswordException`
+ * is not re-exported from the pdfjs-dist top-level module.
+ */
+function isPasswordError(cause: unknown): boolean {
+  // `PasswordException` is not exported from pdfjs-dist; narrow by name property.
+  return (cause as { name?: string } | null)?.name === "PasswordException";
+}
+
+/**
+ * PDF viewer with virtual scrolling.
  *
- * Phase 2B keeps this deliberately simple: it loads the document, renders
- * every page to a `<canvas>`, and laid out either one-column (single) or
- * two-column (dual). No virtual scrolling, no thumbnails, no annotations —
- * the goal is a working reader, not a full PDF.js application.
+ * Renders only pages in the current viewport (+ buffer) instead of all pages
+ * at once. Uses `@tanstack/react-virtual` for virtualization. Each virtual
+ * "row" is either one page (single mode) or two pages side-by-side (dual
+ * mode). Page rendering is delegated to `usePageRenderer` for extensibility.
  */
 export function PdfViewer({ url, mode, className, pageWidth = 720 }: PdfViewerProps) {
   const [state, setState] = React.useState<LoadState>({
     status: "loading",
     doc: null,
     error: null,
+    progress: null,
   });
 
   React.useEffect(() => {
     ensurePdfWorker();
     let cancelled = false;
-    let loadingTask: { destroy: () => Promise<unknown> } | null = null;
+    let loadingTask: PDFDocumentLoadingTask | null = null;
 
-    setState({ status: "loading", doc: null, error: null });
+    setState({ status: "loading", doc: null, error: null, progress: null });
 
     async function load() {
       try {
-        const task = getDocument({ url });
+        const task = getDocument({
+          url,
+          useSystemFonts: true,
+        });
         loadingTask = task;
+
+        task.onProgress = (progress: { loaded: number; total: number }) => {
+          if (cancelled) return;
+          const fraction = progress.total > 0 ? progress.loaded / progress.total : null;
+          setState((prev) => ({ ...prev, progress: fraction }));
+        };
+
         const doc = await task.promise;
         if (cancelled) {
           await doc.destroy();
           return;
         }
-        setState({ status: "ready", doc, error: null });
+        setState({ status: "ready", doc, error: null, progress: 1 });
       } catch (cause) {
         if (cancelled) return;
-        const message = cause instanceof Error ? cause.message : "Failed to load PDF";
-        setState({ status: "error", doc: null, error: message });
+        let message = "Failed to load PDF";
+        if (isPasswordError(cause)) {
+          message = "This PDF requires a password, which is not yet supported";
+        } else if (cause instanceof InvalidPDFException) {
+          message = "This file is not a valid PDF";
+        } else if (cause instanceof Error) {
+          message = cause.message;
+        }
+        setState({ status: "error", doc: null, error: message, progress: null });
       }
     }
 
@@ -85,18 +121,28 @@ export function PdfViewer({ url, mode, className, pageWidth = 720 }: PdfViewerPr
   }, [url]);
 
   if (state.status === "loading") {
+    const pct =
+      state.progress !== null ? `${Math.round(state.progress * 100)}%` : "…";
     return (
       <div
         data-slot="pdf-viewer"
         data-state="loading"
         className={cn(
-          "text-muted-foreground flex h-full items-center justify-center text-sm",
+          "text-muted-foreground flex h-full flex-col items-center justify-center gap-3 text-sm",
           className,
         )}
         role="status"
         aria-live="polite"
       >
-        Loading PDF…
+        <span>Loading PDF {pct}</span>
+        {state.progress !== null && (
+          <div className="bg-muted h-1.5 w-48 overflow-hidden rounded-full">
+            <div
+              className="bg-primary h-full rounded-full transition-all duration-300"
+              style={{ width: `${(state.progress * 100).toString()}%` }}
+            />
+          </div>
+        )}
       </div>
     );
   }
@@ -116,7 +162,18 @@ export function PdfViewer({ url, mode, className, pageWidth = 720 }: PdfViewerPr
     );
   }
 
-  return <PdfPages doc={state.doc} mode={mode} pageWidth={pageWidth} className={className} />;
+  return (
+    <PdfPages doc={state.doc} mode={mode} pageWidth={pageWidth} className={className} />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Virtualised page list
+// ---------------------------------------------------------------------------
+
+interface Row {
+  /** 1-based page numbers in this row. Single mode: [n]; dual: [left, right?]. */
+  pages: readonly number[];
 }
 
 interface PdfPagesProps {
@@ -127,57 +184,132 @@ interface PdfPagesProps {
 }
 
 function PdfPages({ doc, mode, pageWidth, className }: PdfPagesProps) {
-  const pageNumbers = React.useMemo(
-    () => Array.from({ length: doc.numPages }, (_, i) => i + 1),
-    [doc],
-  );
+  const scrollRef = React.useRef<HTMLDivElement>(null);
 
-  if (mode === "dual") {
-    const pairs: (readonly [number, number | null])[] = [];
-    for (let i = 0; i < pageNumbers.length; i += 2) {
-      const left = pageNumbers[i] ?? null;
-      const right = pageNumbers[i + 1] ?? null;
-      if (left === null) continue;
-      pairs.push([left, right]);
+  // Build the list of rows from the document page count and mode.
+  const rows: readonly Row[] = React.useMemo(() => {
+    const result: Row[] = [];
+    if (mode === "dual") {
+      for (let i = 1; i <= doc.numPages; i += 2) {
+        const left = i;
+        const right = i + 1 <= doc.numPages ? i + 1 : null;
+        result.push({ pages: right !== null ? [left, right] : [left] });
+      }
+    } else {
+      for (let i = 1; i <= doc.numPages; i++) {
+        result.push({ pages: [i] });
+      }
     }
-    return (
-      <div
-        data-slot="pdf-viewer"
-        data-state="ready"
-        data-mode="dual"
-        className={cn("flex h-full flex-col items-center gap-6 px-4 py-6", className)}
-      >
-        {pairs.map(([left, right]) => (
-          <div
-            key={`${left}-${right ?? "blank"}`}
-            data-slot="pdf-pair"
-            className="grid w-full max-w-[1600px] grid-cols-1 items-start gap-4 md:grid-cols-2"
-          >
-            <PdfPage doc={doc} pageNumber={left} pageWidth={pageWidth} />
-            {right !== null ? (
-              <PdfPage doc={doc} pageNumber={right} pageWidth={pageWidth} />
-            ) : (
-              <div aria-hidden className="h-1" />
-            )}
-          </div>
-        ))}
-      </div>
-    );
-  }
+    return result;
+  }, [doc, mode]);
+
+  // Estimate row heights. We need a way to give the virtualizer a good
+  // estimate before a row is actually rendered. Strategy:
+  //   - Measure the first page's aspect ratio once we can get it.
+  //   - Use that ratio for all subsequent estimates.
+  //   - Once a row is measured, the virtualizer gets the real height.
+  const [avgPageHeight, setAvgPageHeight] = React.useState<number | null>(null);
+
+  // We measure the first page's viewport on mount to seed the estimate.
+  React.useEffect(() => {
+    let cancelled = false;
+    async function measure() {
+      try {
+        const page = await doc.getPage(1);
+        if (cancelled) {
+          page.cleanup();
+          return;
+        }
+        const vp = page.getViewport({ scale: 1 });
+        const computedScale = pageWidth / vp.width;
+        const estimated = Math.ceil(vp.height * computedScale);
+        setAvgPageHeight(estimated);
+        page.cleanup();
+      } catch {
+        // If we can't measure, the virtualizer will use the default estimate.
+      }
+    }
+    void measure();
+    return () => {
+      cancelled = true;
+    };
+  }, [doc, pageWidth]);
+
+  const isDual = mode === "dual";
+
+  // Default estimate for row height before we measure.
+  const defaultEstimate = avgPageHeight ?? pageWidth * 1.35; // ~1.35:1 is typical letter/A4
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => defaultEstimate + 24, // 24 = vertical gap + padding
+    overscan: 3,
+  });
 
   return (
     <div
       data-slot="pdf-viewer"
       data-state="ready"
-      data-mode="single"
-      className={cn("flex h-full flex-col items-center gap-4 px-4 py-6", className)}
+      data-mode={mode}
+      className={cn("h-full overflow-auto", className)}
+      ref={scrollRef}
     >
-      {pageNumbers.map((pageNumber) => (
-        <PdfPage key={pageNumber} doc={doc} pageNumber={pageNumber} pageWidth={pageWidth} />
-      ))}
+      <div
+        style={{
+          height: `${virtualizer.getTotalSize().toString()}px`,
+          width: "100%",
+          position: "relative",
+        }}
+      >
+        {virtualizer.getVirtualItems().map((virtualRow) => {
+          const row = rows[virtualRow.index];
+          if (row === undefined) return null;
+          return (
+            <div
+              key={virtualRow.key}
+              data-index={virtualRow.index}
+              ref={virtualizer.measureElement}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                transform: `translateY(${virtualRow.start.toString()}px)`,
+              }}
+              className="flex justify-center px-4 py-3"
+            >
+              <div
+                data-slot="pdf-pair"
+                className={cn(
+                  "grid items-start gap-4",
+                  isDual
+                    ? "w-full max-w-[1600px] grid-cols-1 md:grid-cols-2"
+                    : "w-full max-w-[800px] grid-cols-1",
+                )}
+              >
+                {row.pages.map((pageNumber) => (
+                  <PdfPage
+                    key={pageNumber}
+                    doc={doc}
+                    pageNumber={pageNumber}
+                    pageWidth={pageWidth}
+                  />
+                ))}
+                {/* In dual mode, if a row has only one page, add a blank cell. */}
+                {isDual && row.pages.length === 1 && <div aria-hidden className="h-1" />}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Single page renderer
+// ---------------------------------------------------------------------------
 
 interface PdfPageProps {
   doc: PDFDocumentProxy;
@@ -186,48 +318,7 @@ interface PdfPageProps {
 }
 
 function PdfPage({ doc, pageNumber, pageWidth }: PdfPageProps) {
-  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    let page: PDFPageProxy | null = null;
-
-    async function render() {
-      try {
-        page = await doc.getPage(pageNumber);
-        if (cancelled || page === null) return;
-        const canvas = canvasRef.current;
-        if (canvas === null) return;
-        const ctx = canvas.getContext("2d");
-        if (ctx === null) {
-          setError("canvas 2d context unavailable");
-          return;
-        }
-        const baseViewport = page.getViewport({ scale: 1 });
-        const scale = pageWidth / baseViewport.width;
-        const viewport = page.getViewport({ scale });
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        canvas.style.width = `${viewport.width.toString()}px`;
-        canvas.style.height = `${viewport.height.toString()}px`;
-        await page.render({ canvasContext: ctx, viewport, canvas }).promise;
-      } catch (cause) {
-        if (cancelled) return;
-        const message = cause instanceof Error ? cause.message : "Failed to render page";
-        setError(message);
-      }
-    }
-
-    void render();
-
-    return () => {
-      cancelled = true;
-      if (page !== null) {
-        page.cleanup();
-      }
-    };
-  }, [doc, pageNumber, pageWidth]);
+  const { canvasRef, isLoading, error, pageHeight } = usePageRenderer(doc, pageNumber, pageWidth);
 
   if (error !== null) {
     return (
@@ -241,6 +332,21 @@ function PdfPage({ doc, pageNumber, pageWidth }: PdfPageProps) {
       </div>
     );
   }
+
+  if (isLoading) {
+    return (
+      <div
+        data-slot="pdf-page-loading"
+        data-page={pageNumber}
+        className="bg-muted border-border/60 flex w-full items-center justify-center rounded border shadow-sm"
+        style={{ height: `${pageHeight.toString()}px` }}
+        aria-label={`Page ${pageNumber.toString()} loading`}
+      >
+        <span className="text-muted-foreground text-xs">Page {pageNumber}</span>
+      </div>
+    );
+  }
+
   return (
     <canvas
       ref={canvasRef}
