@@ -55,7 +55,12 @@ function checkDir(label, dirPath) {
 
 async function main() {
   const target = process.argv.includes("--dir") ? "dir" : "dist";
-  console.log(`[pack] Starting Electron build pipeline (target: ${target})...\n`);
+  const isMac = process.argv.includes("--mac");
+  const isWin = process.argv.includes("--win");
+  const isLinux = process.argv.includes("--linux");
+  // If no platform flag is given, default to the current platform.
+  const platformFlag = isMac ? "--mac" : isWin ? "--win" : isLinux ? "--linux" : "";
+  console.log(`[pack] Starting Electron build pipeline (target: ${target}${platformFlag ? `, platform: ${platformFlag}` : ""})...\n`);
 
   // Step 1: Build frontend
   console.log("[pack] Step 1/4: Building frontend...");
@@ -91,12 +96,32 @@ async function main() {
 
   // Step 4: Run electron-builder
   console.log(`[pack] Step 4/4: Running electron-builder (${target})...`);
-  const builderArgs = target === "dir" ? "--dir" : "--win";
+  let builderArgs;
+  if (target === "dir") {
+    builderArgs = "--dir";
+  } else if (isMac) {
+    builderArgs = "--mac";
+  } else if (isLinux) {
+    builderArgs = "--linux";
+  } else {
+    builderArgs = "--win";
+  }
   run(`npx electron-builder ${builderArgs}`, { cwd: electronDir });
 
   console.log("\n[pack] Build complete!");
   if (target === "dir") {
-    console.log(`[pack] Output: ${path.resolve(electronDir, "release", "win-unpacked")}`);
+    // For directory builds, electron-builder creates platform-specific output dirs.
+    // The directory name depends on the platform and arch:
+    //   macOS arm64: mac-arm64, macOS x64: mac, Linux: linux-unpacked, Windows: win-unpacked
+    let platformDir;
+    if (isMac || process.platform === "darwin") {
+      platformDir = process.arch === "arm64" ? "mac-arm64" : "mac";
+    } else if (isLinux || process.platform === "linux") {
+      platformDir = "linux-unpacked";
+    } else {
+      platformDir = "win-unpacked";
+    }
+    console.log(`[pack] Output: ${path.resolve(electronDir, "release", platformDir)}`);
   } else {
     console.log(`[pack] Output: ${path.resolve(electronDir, "release")}`);
   }

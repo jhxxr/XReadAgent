@@ -15,6 +15,7 @@ htmlcov/
 
 # Build artifacts
 build/
+!electron/build/
 dist/
 *.whl
 

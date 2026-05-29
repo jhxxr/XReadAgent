@@ -250,7 +250,7 @@ function main() {
   fs.writeFileSync(path.join(buildDir, "icon-256.png"), png256);
   console.log(`[generate-icons] Wrote icon-256.png (${png256.length} bytes)`);
 
-  // Generate 512x512 PNG for Linux
+  // Generate 512x512 PNG for Linux and macOS ICNS source
   console.log("[generate-icons] Generating 512x512 PNG...");
   const pixels512 = generateIconPixels(512);
   const png512 = createPNG(512, 512, pixels512);
@@ -263,7 +263,136 @@ function main() {
   fs.writeFileSync(path.join(buildDir, "icon.ico"), ico);
   console.log(`[generate-icons] Wrote icon.ico (${ico.length} bytes)`);
 
+  // Generate macOS .icns file.
+  // The ICNS format requires an 'icns' container with icon data entries.
+  // Each entry has a 4-byte type, 4-byte length, and the image data.
+  // We include multiple sizes for best compatibility: 16, 32, 128, 256, 512.
+  console.log("[generate-icons] Generating ICNS...");
+  const sizes = [16, 32, 128, 256, 512];
+  const icnsEntries = [];
+  for (const size of sizes) {
+    const pixels = generateIconPixels(size);
+    const png = createPNG(size, size, pixels);
+    // ICNS type codes: is32=16x16, is32m=16x16@2x=32px, ih32=32x32, ih32m=32x32@2x=128px,
+    // ic32=128x128 (?), ic32m=128x128@2x=256px, icp4=256x256 (?), icp5=32x32,
+    // icp6=64x64, ic07=128x128, ic08=256x256, ic09=512x512, ic10=512x512@2x=1024px
+    // Modern ICNS uses PNG format for larger sizes.
+    // Type codes for PNG-based icons:
+    //   icp4 = 16x16, icp5 = 32x32, icp6 = 64x64,
+    //   ic07 = 128x128, ic08 = 256x256, ic09 = 512x512, ic10 = 1024x1024 (retina 512)
+    const typeMap = { 16: "icp4", 32: "icp5", 128: "ic07", 256: "ic08", 512: "ic09" };
+    const type = typeMap[size];
+    if (type) {
+      icnsEntries.push({ type, data: png });
+    }
+  }
+  const icns = createICNS(icnsEntries);
+  fs.writeFileSync(path.join(buildDir, "icon.icns"), icns);
+  console.log(`[generate-icons] Wrote icon.icns (${icns.length} bytes)`);
+
+  // Generate macOS tray template icon (monochrome, for dark/light mode adaptation).
+  // Template icons should be 22x22 @1x (44x44 @2x) and purely black with alpha.
+  // macOS automatically adapts template icons to the menu bar appearance.
+  console.log("[generate-icons] Generating macOS tray template icon...");
+  const trayPixels = generateTrayIconPixels(44); // @2x size for retina
+  const trayPng = createPNG(44, 44, trayPixels);
+  fs.writeFileSync(path.join(buildDir, "tray-icon-template.png"), trayPng);
+  console.log(`[generate-icons] Wrote tray-icon-template.png (${trayPng.length} bytes)`);
+
+  // Also generate a 22x22 @1x version.
+  const trayPixels1x = generateTrayIconPixels(22);
+  const trayPng1x = createPNG(22, 22, trayPixels1x);
+  fs.writeFileSync(path.join(buildDir, "tray-icon-template@1x.png"), trayPng1x);
+  console.log(`[generate-icons] Wrote tray-icon-template@1x.png (${trayPng1x.length} bytes)`);
+
   console.log("[generate-icons] Done! Replace with a proper designed icon before release.");
+}
+
+// ---------------------------------------------------------------------------
+// ICNS file generator (macOS)
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a macOS .icns file from an array of PNG icon entries.
+ *
+ * The ICNS format is a container with a 4-byte magic ('icns'), 4-byte file size,
+ * followed by entries each with a 4-byte type code, 4-byte entry size, and data.
+ *
+ * For PNG-based icons, the data is the raw PNG bytes — macOS handles the
+ * decompression and scaling natively.
+ */
+function createICNS(entries) {
+  // Calculate total size: 8 bytes header + sum of each entry (8 bytes header + data)
+  let dataSize = 8; // file header
+  const entryBuffers = [];
+
+  for (const entry of entries) {
+    const typeBuffer = Buffer.from(entry.type, "ascii");
+    const dataLen = entry.data.length;
+    const entrySize = 8 + dataLen; // type(4) + size(4) + data
+    const sizeBuffer = Buffer.alloc(4);
+    sizeBuffer.writeUInt32BE(entrySize, 0);
+    const entryBuf = Buffer.concat([typeBuffer, sizeBuffer, entry.data]);
+    entryBuffers.push(entryBuf);
+    dataSize += entrySize;
+  }
+
+  // File header: 'icns' magic + total file size
+  const header = Buffer.alloc(8);
+  header.write("icns", 0, "ascii");
+  header.writeUInt32BE(dataSize, 4);
+
+  return Buffer.concat([header, ...entryBuffers]);
+}
+
+// ---------------------------------------------------------------------------
+// Tray icon pixel generator (macOS template icon)
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate pixels for a macOS tray template icon.
+ *
+ * Template icons are monochrome (black + alpha only). macOS automatically
+ * adjusts them for light/dark mode. The icon is a simple book/reader shape
+ * matching the app icon but simplified for the 16x16/22x22 tray size.
+ *
+ * @param {number} size - Icon size in pixels (22 for @1x, 44 for @2x)
+ * @returns {Buffer} RGBA pixel data
+ */
+function generateTrayIconPixels(size) {
+  const rgba = Buffer.alloc(size * size * 4);
+  // All pixels start transparent (Buffer.alloc initializes to 0).
+
+  // Draw a simplified book/reader shape as black with alpha.
+  // The shape is scaled relative to the icon size.
+  const margin = Math.max(1, Math.round(size * 0.1));
+  const bookLeft = margin;
+  const bookRight = size - margin;
+  const bookTop = margin;
+  const bookBottom = size - margin;
+  const spineX = Math.round(size / 2);
+
+  for (let y = bookTop; y < bookBottom; y++) {
+    for (let x = bookLeft; x < bookRight; x++) {
+      const idx = (y * size + x) * 4;
+
+      // Left page or right page (not the spine gap).
+      const isLeftPage = x < spineX - 1;
+      const isRightPage = x > spineX + 1;
+      const isSpine = x >= spineX - 1 && x <= spineX + 1;
+
+      if (isLeftPage || isRightPage || isSpine) {
+        // Black fill with full opacity for the book shape.
+        rgba[idx] = 0;     // R (black for template)
+        rgba[idx + 1] = 0;  // G
+        rgba[idx + 2] = 0;  // B
+        rgba[idx + 3] = 255; // A (fully opaque)
+      }
+      // Else: remains transparent (0,0,0,0) — the background.
+    }
+  }
+
+  return rgba;
 }
 
 main();

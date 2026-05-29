@@ -359,9 +359,18 @@ function setApplicationMenu(): void {
 // ---------------------------------------------------------------------------
 
 function createTray(): void {
-  // Use a 16x16 DataURL icon as a placeholder for the tray.
-  // A proper .ico file should be added to resources/ for the production build.
-  const icon = createTrayIcon();
+  // On macOS, use a template icon (monochrome, adapts to light/dark mode).
+  // On Windows/Linux, use the programmatically generated colored icon.
+  let icon: Electron.NativeImage;
+  if (process.platform === "darwin") {
+    // macOS: generate a monochrome template icon programmatically.
+    // Template icons must be black + alpha only; macOS auto-inverts
+    // them to match light/dark menu bar appearance.
+    icon = createTrayTemplateIcon();
+    icon.setTemplateImage(true);
+  } else {
+    icon = createTrayIcon();
+  }
   tray = new Tray(icon);
 
   const contextMenu = Menu.buildFromTemplate([
@@ -415,6 +424,50 @@ function createTrayIcon(): Electron.NativeImage {
   }
 
   return nativeImage.createFromBuffer(canvas, {
+    width: size,
+    height: size,
+    scaleFactor: 1.0,
+  });
+}
+
+/**
+ * Create a 22x22 monochrome template icon for the macOS system tray.
+ *
+ * macOS template icons should be black + alpha only (no color). The OS
+ * automatically adapts them for light/dark mode appearance. The icon is
+ * a simplified book/reader shape matching the app icon.
+ */
+function createTrayTemplateIcon(): Electron.NativeImage {
+  const size = 22;
+  const rgba = Buffer.alloc(size * size * 4);
+
+  // Draw a simplified book shape: two pages with a spine gap.
+  const margin = 2;
+  const bookLeft = margin;
+  const bookRight = size - margin;
+  const bookTop = margin;
+  const bookBottom = size - margin;
+  const spineX = Math.round(size / 2);
+
+  for (let y = bookTop; y < bookBottom; y++) {
+    for (let x = bookLeft; x < bookRight; x++) {
+      const idx = (y * size + x) * 4;
+      const isLeftPage = x < spineX - 1;
+      const isRightPage = x > spineX + 1;
+      const isSpine = x >= spineX - 1 && x <= spineX + 1;
+
+      if (isLeftPage || isRightPage || isSpine) {
+        // Black fill with full opacity for template icon.
+        rgba[idx] = 0;      // R
+        rgba[idx + 1] = 0;  // G
+        rgba[idx + 2] = 0;  // B
+        rgba[idx + 3] = 255; // A
+      }
+      // Else: remains transparent (0,0,0,0).
+    }
+  }
+
+  return nativeImage.createFromBuffer(rgba, {
     width: size,
     height: size,
     scaleFactor: 1.0,

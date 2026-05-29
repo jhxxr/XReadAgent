@@ -90,10 +90,54 @@ nsis:
   # Multi-language NSIS requires electron-builder >= 25 with language packs.
   language: 1033
 
-# macOS configuration (reserved for future v2).
+# macOS configuration.
+# Produces a universal binary (arm64 + x64 combined) by default.
+# To build for a single arch only, set the env var:
+#   BUILD_ARCH=arm64 pnpm dist:mac
+# or override on the command line with electron-builder --mac --arm64.
 mac:
+  target:
+    - target: dmg
+      arch:
+        - universal
+    - target: zip
+      arch:
+        - universal
   category: public.app-category.productivity
   icon: build/icon.icns
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.inherit.plist
+  # When Apple Developer certificates are not available (CSC_LINK env var unset),
+  # electron-builder will create an unsigned build. This allows developers to
+  # test the macOS build without a certificate — the app will show a Gatekeeper
+  # warning when launched. Set identity to null explicitly to skip signing.
+  # For signed builds, set CSC_LINK and CSC_KEY_PASSWORD as env vars.
+  extendInfo:
+    CFBundleURLTypes:
+      - CFBundleURLSchemes:
+          - xread
+        CFBundleURLName: com.xreadagent.desktop
+    # Register .xread file type in Info.plist for macOS.
+    CFBundleDocumentTypes:
+      - CFBundleTypeName: XReadAgent Workspace
+        CFBundleTypeRole: Editor
+        LSItemContentTypes:
+          - com.xreadagent.workspace
+        CFBundleTypeExtensions:
+          - xread
+
+# DMG configuration for macOS disk image installer.
+dmg:
+  contents:
+    - x: 130
+      "y": 220
+      type: file
+      path: XReadAgent.app
+    - x: 410
+      "y": 220
+      type: link
+      path: /Applications
 
 # Linux configuration (reserved for future v2).
 linux:

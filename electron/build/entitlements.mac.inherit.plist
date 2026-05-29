@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Inherited entitlements for child processes (Python sidecar, etc.). -->
+  <!-- These must match the main entitlements for the sidecar to work correctly. -->
+  <!-- Required for Electron helper processes. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <!-- Required for Electron helper processes. -->
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <!-- Required for sidecar: Python sidecar listens for HTTP connections on localhost. -->
+  <key>com.apple.security.network.server</key>
+  <true/>
+  <!-- Required for outbound connections: LLM API calls, etc. -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+</dict>
+</plist>

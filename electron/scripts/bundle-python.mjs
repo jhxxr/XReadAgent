@@ -61,7 +61,9 @@ function getPythonArchiveUrl() {
     ext = "zip";
     platformSuffix = `windows-${psArch}`;
   } else if (PLATFORM === "darwin") {
-    platformSuffix = `macos-${psArch}`;
+    // python-build-standalone uses "{arch}-apple-darwin" for macOS,
+    // NOT "macos-{arch}". See: https://github.com/astral-sh/python-build-standalone
+    platformSuffix = `${psArch}-apple-darwin`;
   } else {
     platformSuffix = `linux-${psArch}`;
   }
