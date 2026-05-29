@@ -8,6 +8,7 @@ import {
 } from "pdfjs-dist";
 import * as React from "react";
 
+import { Button } from "@/components/ui/button";
 import { ensurePdfWorker } from "@/lib/pdfjs";
 import { usePageRenderer } from "@/lib/use-page-renderer";
 import { ZOOM_DEFAULT, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from "@/components/reader/pdf-toolbar";
@@ -57,9 +58,15 @@ interface LoadState {
   status: "loading" | "ready" | "error";
   doc: PDFDocumentProxy | null;
   error: string | null;
-  /** Fraction of document bytes downloaded (0–1), null while unknown. */
+  /** Fraction of document bytes downloaded (0-1), null while unknown. */
   progress: number | null;
 }
+
+/** Timeout in milliseconds before showing the "slow load" hint. */
+const SLOW_LOAD_TIMEOUT_MS = 60_000;
+
+/** Page count threshold for the "large document" warning. */
+const LARGE_DOCUMENT_THRESHOLD = 50;
 
 /**
  * Detect password-protected PDF errors by name, since `PasswordException`
@@ -67,7 +74,28 @@ interface LoadState {
  */
 function isPasswordError(cause: unknown): boolean {
   // `PasswordException` is not exported from pdfjs-dist; narrow by name property.
-  return (cause as { name?: string } | null)?.name === "PasswordException";
+  if (typeof cause === "object" && cause !== null && "name" in cause) {
+    return cause.name === "PasswordException";
+  }
+  return false;
+}
+
+/**
+ * Detect network/server errors from pdfjs-dist.
+ *
+ * pdfjs-dist reports network failures as "Unexpected server response (0)" and
+ * browser-originated failures as "Failed to fetch" or similar.
+ */
+function isNetworkError(cause: unknown): boolean {
+  if (cause instanceof Error) {
+    const msg = cause.message;
+    return (
+      msg.includes("Unexpected server response (0)") ||
+      msg.includes("Failed to fetch") ||
+      msg.includes("NetworkError")
+    );
+  }
+  return false;
 }
 
 /**
@@ -102,6 +130,11 @@ export function PdfViewer({
   // Internal current page state (used when not controlled).
   const [internalCurrentPage, setInternalCurrentPage] = React.useState(1);
 
+  // Retry mechanism: incrementing this key re-triggers the load effect.
+  const [retryKey, setRetryKey] = React.useState(0);
+  // Slow load detection: true when loading exceeds SLOW_LOAD_TIMEOUT_MS.
+  const [slowLoad, setSlowLoad] = React.useState(false);
+
   const zoom = controlledZoom ?? internalZoom;
   const currentPage = controlledCurrentPage ?? internalCurrentPage;
 
@@ -133,6 +166,14 @@ export function PdfViewer({
     let loadingTask: PDFDocumentLoadingTask | null = null;
 
     setState({ status: "loading", doc: null, error: null, progress: null });
+    setSlowLoad(false);
+
+    // Slow load detection: show a hint after the timeout.
+    const slowLoadTimerId = setTimeout(() => {
+      if (!cancelled) {
+        setSlowLoad(true);
+      }
+    }, SLOW_LOAD_TIMEOUT_MS);
 
     async function load() {
       try {
@@ -153,15 +194,19 @@ export function PdfViewer({
           await doc.destroy();
           return;
         }
+        clearTimeout(slowLoadTimerId);
         setState({ status: "ready", doc, error: null, progress: 1 });
         onTotalPagesChange?.(doc.numPages);
       } catch (cause) {
         if (cancelled) return;
+        clearTimeout(slowLoadTimerId);
         let message = "Failed to load PDF";
         if (isPasswordError(cause)) {
           message = "This PDF requires a password, which is not yet supported";
         } else if (cause instanceof InvalidPDFException) {
           message = "This file is not a valid PDF";
+        } else if (isNetworkError(cause)) {
+          message = "Could not connect to server. The file may not exist or the server is unavailable.";
         } else if (cause instanceof Error) {
           message = cause.message;
         }
@@ -176,8 +221,13 @@ export function PdfViewer({
       if (loadingTask !== null) {
         void loadingTask.destroy();
       }
+      clearTimeout(slowLoadTimerId);
     };
-  }, [url, onTotalPagesChange]);
+  }, [url, onTotalPagesChange, retryKey]);
+
+  const handleRetry = React.useCallback(() => {
+    setRetryKey((prev) => prev + 1);
+  }, []);
 
   if (state.status === "loading") {
     const pct =
@@ -202,6 +252,11 @@ export function PdfViewer({
             />
           </div>
         )}
+        {slowLoad && (
+          <span className="text-muted-foreground text-xs">
+            Loading is taking longer than expected...
+          </span>
+        )}
       </div>
     );
   }
@@ -211,12 +266,20 @@ export function PdfViewer({
         data-slot="pdf-viewer"
         data-state="error"
         className={cn(
-          "text-destructive flex h-full items-center justify-center text-sm",
+          "text-destructive flex h-full flex-col items-center justify-center gap-3 text-sm",
           className,
         )}
         role="alert"
       >
-        Could not load PDF: {state.error ?? "unknown error"}
+        <span>Could not load PDF: {state.error ?? "unknown error"}</span>
+        <Button
+          type="button"
+          onClick={handleRetry}
+          size="sm"
+          aria-label="Retry loading PDF"
+        >
+          Retry
+        </Button>
       </div>
     );
   }
@@ -380,21 +443,48 @@ function PdfPages({
   }, [virtualItems, rowToFirstPage, currentPage, onCurrentPageChange]);
 
   // Handle navigate to page: scroll the virtualizer so the row containing
-  // the target page is in view.
+  // the target page is in view. Always scrolls internally; also notifies the
+  // parent callback if provided.
   const handleNavigateToPage = React.useCallback(
     (page: number) => {
-      if (onNavigateToPage !== undefined) {
-        onNavigateToPage(page);
-        return;
-      }
       // Find the row index that contains this page.
       const rowIndex = rows.findIndex((row) => row.pages.includes(page));
       if (rowIndex >= 0) {
         virtualizer.scrollToIndex(rowIndex, { align: "center" });
       }
+      // Notify the parent if they provided a callback.
+      onNavigateToPage?.(page);
     },
     [onNavigateToPage, rows, virtualizer],
   );
+
+  // Initial scroll-to-page: on mount, scroll to the currentPage position
+  // so that tab switches restore the user's reading position.
+  const initialScrollDoneRef = React.useRef(false);
+  React.useEffect(() => {
+    if (initialScrollDoneRef.current) return;
+    if (rows.length === 0) return;
+    initialScrollDoneRef.current = true;
+
+    if (currentPage > 1) {
+      const rowIndex = rows.findIndex((row) => row.pages.includes(currentPage));
+      if (rowIndex >= 0) {
+        // Defer to the next frame so the virtualizer has laid out items.
+        requestAnimationFrame(() => {
+          virtualizer.scrollToIndex(rowIndex, { align: "start" });
+        });
+      }
+    }
+  }, [currentPage, rows, virtualizer]);
+
+  // Track whether at least one page has finished rendering.
+  // Used to show the "Rendering pages..." indicator.
+  const [firstPageRendered, setFirstPageRendered] = React.useState(false);
+  const handlePageRendered = React.useCallback(() => {
+    setFirstPageRendered(true);
+  }, []);
+
+  const isLargeDocument = doc.numPages > LARGE_DOCUMENT_THRESHOLD;
 
   // Track container width for fit-width calculations.
   React.useEffect(() => {
@@ -474,6 +564,8 @@ function PdfPages({
     scrollRef.current?.focus();
   }, []);
 
+  const isRendering = !firstPageRendered;
+
   const toolbarProps: PdfToolbarProps = {
     zoom,
     onZoomChange,
@@ -481,68 +573,86 @@ function PdfPages({
     totalPages: doc.numPages,
     onNavigateToPage: handleNavigateToPage,
     isLoading: false,
+    isRendering,
+    isLargeDocument,
   };
 
   return (
     <div className={cn("flex h-full flex-col", className)}>
       {renderToolbar?.(toolbarProps)}
-      <div
-        data-slot="pdf-viewer"
-        data-state="ready"
-        data-mode={mode}
-        className="h-full overflow-auto outline-none"
-        ref={scrollRef}
-        tabIndex={-1}
-        onMouseDown={handleContainerMouseDown}
-      >
+      <div className="relative flex-1 overflow-hidden">
         <div
-          style={{
-            height: `${virtualizer.getTotalSize().toString()}px`,
-            width: "100%",
-            position: "relative",
-          }}
+          data-slot="pdf-viewer"
+          data-state="ready"
+          data-mode={mode}
+          className="h-full overflow-auto outline-none"
+          ref={scrollRef}
+          tabIndex={-1}
+          onMouseDown={handleContainerMouseDown}
         >
-          {virtualizer.getVirtualItems().map((virtualRow) => {
-            const row = rows[virtualRow.index];
-            if (row === undefined) return null;
-            return (
-              <div
-                key={virtualRow.key}
-                data-index={virtualRow.index}
-                ref={virtualizer.measureElement}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  transform: `translateY(${virtualRow.start.toString()}px)`,
-                }}
-                className="flex justify-center px-4 py-3"
-              >
+          <div
+            style={{
+              height: `${virtualizer.getTotalSize().toString()}px`,
+              width: "100%",
+              position: "relative",
+            }}
+          >
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const row = rows[virtualRow.index];
+              if (row === undefined) return null;
+              return (
                 <div
-                  data-slot="pdf-pair"
-                  className={cn(
-                    "grid items-start gap-4",
-                    isDual
-                      ? "w-full max-w-[1600px] grid-cols-1 md:grid-cols-2"
-                      : "w-full max-w-[800px] grid-cols-1",
-                  )}
+                  key={virtualRow.key}
+                  data-index={virtualRow.index}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${virtualRow.start.toString()}px)`,
+                  }}
+                  className="flex justify-center px-4 py-3"
                 >
-                  {row.pages.map((pageNumber) => (
-                    <PdfPage
-                      key={pageNumber}
-                      doc={doc}
-                      pageNumber={pageNumber}
-                      pageWidth={pageWidth}
-                    />
-                  ))}
-                  {/* In dual mode, if a row has only one page, add a blank cell. */}
-                  {isDual && row.pages.length === 1 && <div aria-hidden className="h-1" />}
+                  <div
+                    data-slot="pdf-pair"
+                    className={cn(
+                      "grid items-start gap-4",
+                      isDual
+                        ? "w-full max-w-[1600px] grid-cols-1 md:grid-cols-2"
+                        : "w-full max-w-[800px] grid-cols-1",
+                    )}
+                  >
+                    {row.pages.map((pageNumber) => (
+                      <PdfPage
+                        key={pageNumber}
+                        doc={doc}
+                        pageNumber={pageNumber}
+                        pageWidth={pageWidth}
+                        onPageRendered={handlePageRendered}
+                      />
+                    ))}
+                    {/* In dual mode, if a row has only one page, add a blank cell. */}
+                    {isDual && row.pages.length === 1 && <div aria-hidden className="h-1" />}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
+        {/* Rendering overlay — shows briefly until first page paints. */}
+        {isRendering && (
+          <div
+            data-slot="pdf-rendering-overlay"
+            className="bg-background/80 absolute bottom-4 left-1/2 -translate-x-1/2 rounded-md px-3 py-1.5 text-xs shadow-sm backdrop-blur-sm"
+            role="status"
+            aria-live="polite"
+          >
+            {isLargeDocument
+              ? "Large document, rendering may take a moment..."
+              : "Rendering pages..."}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -556,14 +666,25 @@ interface PdfPageProps {
   doc: PDFDocumentProxy;
   pageNumber: number;
   pageWidth: number;
+  /** Callback fired when this page finishes rendering. */
+  onPageRendered?: () => void;
 }
 
-function PdfPage({ doc, pageNumber, pageWidth }: PdfPageProps) {
+function PdfPage({ doc, pageNumber, pageWidth, onPageRendered }: PdfPageProps) {
   const { canvasRef, textLayerRef, isLoading, error, pageHeight } = usePageRenderer(
     doc,
     pageNumber,
     pageWidth,
   );
+
+  // Notify parent when this page finishes rendering.
+  const prevLoadingRef = React.useRef(isLoading);
+  React.useEffect(() => {
+    if (prevLoadingRef.current && !isLoading) {
+      onPageRendered?.();
+    }
+    prevLoadingRef.current = isLoading;
+  }, [isLoading, onPageRendered]);
 
   if (error !== null) {
     return (
@@ -578,22 +699,29 @@ function PdfPage({ doc, pageNumber, pageWidth }: PdfPageProps) {
     );
   }
 
-  if (isLoading) {
-    return (
-      <div
-        data-slot="pdf-page-loading"
-        data-page={pageNumber}
-        className="bg-muted border-border/60 flex w-full items-center justify-center rounded border shadow-sm"
-        style={{ height: `${pageHeight.toString()}px` }}
-        aria-label={`Page ${pageNumber.toString()} loading`}
-      >
-        <span className="text-muted-foreground text-xs">Page {pageNumber}</span>
-      </div>
-    );
-  }
-
   return (
-    <div data-slot="pdf-page-container" data-page={pageNumber} className="relative">
+    <div
+      data-slot="pdf-page-container"
+      data-page={pageNumber}
+      className="relative"
+      style={isLoading ? { height: `${pageHeight.toString()}px` } : undefined}
+    >
+      {/* Skeleton overlay shown while canvas is rendering. The canvas element
+          must always be in the DOM so that the canvasRef callback fires and
+          triggers the actual page render. */}
+      {isLoading && (
+        <div
+          data-slot="pdf-page-loading"
+          data-page={pageNumber}
+          className="bg-muted border-border/60 animate-pulse absolute inset-0 z-10 flex items-center justify-center rounded border shadow-sm"
+          aria-label={`Page ${pageNumber.toString()} loading`}
+        >
+          <div className="flex flex-col items-center gap-2">
+            <div className="bg-muted-foreground/10 h-3 w-16 rounded" />
+            <span className="text-muted-foreground text-xs">{pageNumber}</span>
+          </div>
+        </div>
+      )}
       <canvas
         ref={canvasRef}
         data-slot="pdf-page"

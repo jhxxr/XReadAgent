@@ -10,6 +10,11 @@ import {
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 /** Zoom range constants. */
@@ -29,15 +34,19 @@ export interface PdfToolbarProps {
   totalPages: number;
   /** Callback to navigate to a specific 1-based page. */
   onNavigateToPage: (page: number) => void;
-  /** Whether the viewer is currently loading. */
+  /** Whether the viewer is currently loading the document. */
   isLoading?: boolean;
+  /** Whether pages are still being rendered after document load. */
+  isRendering?: boolean;
+  /** Whether this is a large document (50+ pages). */
+  isLargeDocument?: boolean;
   className?: string;
 }
 
 /**
  * Toolbar for PDF viewer with zoom controls and page navigation.
  *
- * Zoom range: 50%–300%, step 25%.
+ * Zoom range: 50%-300%, step 25%.
  * Keyboard shortcuts (registered in PdfViewer, not here):
  *   Ctrl+=  zoom in
  *   Ctrl+-  zoom out
@@ -52,6 +61,8 @@ export function PdfToolbar({
   totalPages,
   onNavigateToPage,
   isLoading = false,
+  isRendering = false,
+  isLargeDocument = false,
   className,
 }: PdfToolbarProps) {
   const [pageInputValue, setPageInputValue] = React.useState(currentPage.toString());
@@ -123,6 +134,8 @@ export function PdfToolbar({
     setPageInputValue(e.target.value);
   }
 
+  const disableControls = isLoading;
+
   return (
     <div
       data-slot="pdf-toolbar"
@@ -131,72 +144,104 @@ export function PdfToolbar({
         className,
       )}
     >
+      {/* Rendering indicator — informational only, does not disable controls */}
+      {isRendering && (
+        <span className="text-muted-foreground mr-1 text-xs animate-pulse">
+          Rendering{isLargeDocument ? " large document" : ""}...
+        </span>
+      )}
+
       {/* Zoom controls */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-8"
-        onClick={handleZoomOut}
-        disabled={!canZoomOut || isLoading}
-        aria-label="Zoom out"
-      >
-        <ZoomOutIcon className="size-3.5" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={handleZoomOut}
+            disabled={!canZoomOut || disableControls}
+            aria-label="Zoom out"
+          >
+            <ZoomOutIcon className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Zoom Out (Ctrl+-)</TooltipContent>
+      </Tooltip>
 
       <span
-        className="text-muted-foreground w-12 text-center text-xs tabular-nums"
+        className="text-muted-foreground w-12 text-center text-xs tabular-nums hidden sm:inline"
         aria-label={`Zoom level: ${zoom.toString()}%`}
       >
         {zoom}%
       </span>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-8"
-        onClick={handleZoomIn}
-        disabled={!canZoomIn || isLoading}
-        aria-label="Zoom in"
-      >
-        <ZoomInIcon className="size-3.5" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={handleZoomIn}
+            disabled={!canZoomIn || disableControls}
+            aria-label="Zoom in"
+          >
+            <ZoomInIcon className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Zoom In (Ctrl+=)</TooltipContent>
+      </Tooltip>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-8"
-        onClick={handleFitWidth}
-        disabled={isLoading}
-        aria-label="Fit width"
-      >
-        <Maximize2Icon className="size-3.5" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={handleFitWidth}
+            disabled={disableControls}
+            aria-label="Fit width"
+          >
+            <Maximize2Icon className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Fit Width</TooltipContent>
+      </Tooltip>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-8"
-        onClick={handleReset}
-        disabled={zoom === ZOOM_DEFAULT || isLoading}
-        aria-label="Reset zoom"
-      >
-        <RotateCcwIcon className="size-3.5" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={handleReset}
+            disabled={zoom === ZOOM_DEFAULT || disableControls}
+            aria-label="Reset zoom"
+          >
+            <RotateCcwIcon className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Reset Zoom (Ctrl+0)</TooltipContent>
+      </Tooltip>
 
       {/* Separator */}
       <div className="bg-border/60 mx-1 h-4 w-px" />
 
       {/* Page navigation */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-8"
-        onClick={() => onNavigateToPage(currentPage - 1)}
-        disabled={!canPrevPage || isLoading}
-        aria-label="Previous page"
-      >
-        <ChevronLeftIcon className="size-3.5" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={() => onNavigateToPage(currentPage - 1)}
+            disabled={!canPrevPage || disableControls}
+            aria-label="Previous page"
+          >
+            <ChevronLeftIcon className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Previous Page (PageUp)</TooltipContent>
+      </Tooltip>
 
       <div className="flex items-center gap-1 text-xs">
         <input
@@ -209,23 +254,28 @@ export function PdfToolbar({
           onBlur={handlePageInputSubmit}
           onKeyDown={handlePageInputKeyDown}
           className="bg-muted h-6 w-8 rounded border-none text-center text-xs tabular-nums outline-none focus:ring-1 focus:ring-ring"
-          disabled={isLoading || totalPages === 0}
+          disabled={disableControls || totalPages === 0}
           aria-label={`Page number, ${currentPage} of ${totalPages}`}
         />
         <span className="text-muted-foreground">/</span>
         <span className="text-muted-foreground tabular-nums">{totalPages}</span>
       </div>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-8"
-        onClick={() => onNavigateToPage(currentPage + 1)}
-        disabled={!canNextPage || isLoading}
-        aria-label="Next page"
-      >
-        <ChevronRightIcon className="size-3.5" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={() => onNavigateToPage(currentPage + 1)}
+            disabled={!canNextPage || disableControls}
+            aria-label="Next page"
+          >
+            <ChevronRightIcon className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Next Page (PageDown)</TooltipContent>
+      </Tooltip>
     </div>
   );
 }

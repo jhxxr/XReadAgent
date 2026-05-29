@@ -30,13 +30,28 @@ vi.mock("pdfjs-dist", () => ({
             width: 100 * scale,
             height: 200 * scale,
           }),
-          render: () => ({ promise: Promise.resolve() }),
+          render: () => ({ promise: Promise.resolve(), cancel: vi.fn() }),
           cleanup: vi.fn(),
+          getTextContent: vi.fn(() => Promise.resolve({ items: [] })),
         }),
       destroy: vi.fn(),
     }),
     destroy: vi.fn(),
   }),
+  TextLayer: class TextLayerMock {
+    render() {
+      return Promise.resolve(undefined);
+    }
+    cancel() {
+      // no-op
+    }
+  },
+  InvalidPDFException: class InvalidPDFException extends Error {
+    constructor(msg: string) {
+      super(msg);
+      this.name = "InvalidPDFException";
+    }
+  },
 }));
 
 import { PaperReadRoute } from "@/routes/paper-read";
@@ -196,6 +211,11 @@ describe("PaperReadRoute", () => {
       expect(dual.getAttribute("data-state")).toBe("active");
     });
 
+    // Wait for the page rendering to complete (zoom buttons are disabled while rendering).
+    await waitFor(() => {
+      expect(screen.getByLabelText("Zoom in")).not.toBeDisabled();
+    });
+
     // Zoom in using the toolbar button.
     const zoomInButton = screen.getByLabelText("Zoom in");
     await userEvent.click(zoomInButton);
@@ -215,5 +235,62 @@ describe("PaperReadRoute", () => {
 
     // Zoom level should be preserved across tabs.
     expect(screen.getByLabelText(/zoom level/i)).toHaveTextContent("125%");
+  });
+
+  it("preserves page position when switching tabs", async () => {
+    writeWorkspacePath("/tmp/ws");
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          version: 1,
+          entries: [
+            {
+              sourceSlug: "alpha-aaaaaaaaaaaa",
+              sourceHash: "h1",
+              targetLang: "zh",
+              model: "anthropic:claude-3-7-sonnet-latest",
+              monoPath: "translations/alpha-aaaaaaaaaaaa.mono.pdf",
+              dualPath: "translations/alpha-aaaaaaaaaaaa.dual.pdf",
+              translatedAt: "2026-05-25T10:00:00Z",
+              durationS: 12.5,
+              babeldocVersion: "0.6.2",
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    renderReader();
+
+    // Wait for the Dual tab to be active.
+    await waitFor(() => {
+      const dual = screen.getByRole("tab", { name: /^dual$/i });
+      expect(dual.getAttribute("data-state")).toBe("active");
+    });
+
+    // Switch to the Original tab.
+    const originalTab = screen.getByRole("tab", { name: /^original$/i });
+    await userEvent.click(originalTab);
+
+    await waitFor(() => {
+      expect(originalTab.getAttribute("data-state")).toBe("active");
+    });
+
+    // The page number input should show page 1 (default).
+    const pageInput = screen.getByLabelText(/page number/i);
+    expect(pageInput).toHaveValue("1");
+
+    // Switch back to Dual tab.
+    const dualTab = screen.getByRole("tab", { name: /^dual$/i });
+    await userEvent.click(dualTab);
+
+    await waitFor(() => {
+      expect(dualTab.getAttribute("data-state")).toBe("active");
+    });
+
+    // Page number should still be 1 for the dual tab.
+    const pageInputDual = screen.getByLabelText(/page number/i);
+    expect(pageInputDual).toHaveValue("1");
   });
 });

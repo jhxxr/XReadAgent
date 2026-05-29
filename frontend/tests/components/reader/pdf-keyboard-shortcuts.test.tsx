@@ -32,6 +32,7 @@ vi.mock("pdfjs-dist", () => ({
 import { PdfViewer } from "@/components/reader/pdf-viewer";
 import type { PdfToolbarProps } from "@/components/reader/pdf-toolbar";
 import { PdfToolbar, ZOOM_DEFAULT, ZOOM_STEP } from "@/components/reader/pdf-toolbar";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { getDocument } from "pdfjs-dist";
 
 const mockGetDocument = getDocument as unknown as ReturnType<typeof vi.fn>;
@@ -66,6 +67,10 @@ function setupDocument(numPages: number) {
   });
 }
 
+function renderWithTooltip(ui: React.ReactElement) {
+  return render(<TooltipProvider>{ui}</TooltipProvider>);
+}
+
 describe("PdfViewer keyboard shortcuts", () => {
   beforeEach(() => {
     window.matchMedia = (query: string) =>
@@ -93,7 +98,7 @@ describe("PdfViewer keyboard shortcuts", () => {
   it("zooms in with Ctrl+=", async () => {
     const onZoomChange = vi.fn();
     setupDocument(5);
-    render(
+    renderWithTooltip(
       <PdfViewer
         url="/mock.pdf"
         mode="single"
@@ -121,7 +126,7 @@ describe("PdfViewer keyboard shortcuts", () => {
   it("zooms out with Ctrl+-", async () => {
     const onZoomChange = vi.fn();
     setupDocument(5);
-    render(
+    renderWithTooltip(
       <PdfViewer
         url="/mock.pdf"
         mode="single"
@@ -149,7 +154,7 @@ describe("PdfViewer keyboard shortcuts", () => {
   it("resets zoom with Ctrl+0", async () => {
     const onZoomChange = vi.fn();
     setupDocument(5);
-    render(
+    renderWithTooltip(
       <PdfViewer
         url="/mock.pdf"
         mode="single"
@@ -177,7 +182,7 @@ describe("PdfViewer keyboard shortcuts", () => {
   it("navigates to next page with PageDown", async () => {
     const onNavigateToPage = vi.fn();
     setupDocument(5);
-    render(
+    renderWithTooltip(
       <PdfViewer
         url="/mock.pdf"
         mode="single"
@@ -207,7 +212,7 @@ describe("PdfViewer keyboard shortcuts", () => {
   it("navigates to previous page with PageUp", async () => {
     const onNavigateToPage = vi.fn();
     setupDocument(5);
-    render(
+    renderWithTooltip(
       <PdfViewer
         url="/mock.pdf"
         mode="single"
@@ -237,7 +242,7 @@ describe("PdfViewer keyboard shortcuts", () => {
   it("navigates to first page with Home", async () => {
     const onNavigateToPage = vi.fn();
     setupDocument(5);
-    render(
+    renderWithTooltip(
       <PdfViewer
         url="/mock.pdf"
         mode="single"
@@ -267,7 +272,7 @@ describe("PdfViewer keyboard shortcuts", () => {
   it("navigates to last page with End", async () => {
     const onNavigateToPage = vi.fn();
     setupDocument(5);
-    render(
+    renderWithTooltip(
       <PdfViewer
         url="/mock.pdf"
         mode="single"

@@ -93,6 +93,12 @@ export function PaperReadRoute() {
     translated: 1,
   });
 
+  // Refs for accessing latest state inside callbacks without re-creating them.
+  const pageStatesRef = React.useRef(pageStates);
+  pageStatesRef.current = pageStates;
+  const tabRef = React.useRef(tab);
+  tabRef.current = tab;
+
   // After manifest data arrives, recompute the default tab — unless the
   // user has already picked a tab, in which case we leave their choice
   // alone. This handles "open /read with no dual yet → translate completes
@@ -108,10 +114,14 @@ export function PaperReadRoute() {
       void queryClient.invalidateQueries({
         queryKey: ["translations-manifest", workspacePath],
       });
+      // Preserve the current reading position when auto-switching tabs.
+      const currentPageNumber = pageStatesRef.current[tabRef.current];
       if (event.dual_path !== null) {
+        setPageStates((prev) => ({ ...prev, dual: currentPageNumber }));
         setTab("dual");
         setTabPinned(true);
       } else if (event.mono_path !== null) {
+        setPageStates((prev) => ({ ...prev, translated: currentPageNumber }));
         setTab("translated");
         setTabPinned(true);
       }
