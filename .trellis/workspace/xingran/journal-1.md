@@ -493,3 +493,36 @@ Pinned pnpm v9 in CI and release workflows, updated GitHub Actions to Node 24-ca
 ### Next Steps
 
 - None - task complete
+
+
+## Session 15: Fix CI dependency and test selection
+
+**Date**: 2026-05-29
+**Task**: Fix CI dependency and test selection
+**Branch**: `main`
+
+### Summary
+
+Investigated GitHub Actions run 26626760823, aligned workflow pnpm setup with pnpm 11, fixed Electron E2E unused import, and made pytest default selection exclude heavyweight opt-in markers while preserving marker opt-in collection.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6f4fdba` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
