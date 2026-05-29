@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Verify MCP code meets backend quality bar"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify elicit confirmation pattern for expensive operations"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify MCP ↔ FastAPI integration is consistent"}
+{"file": ".trellis/tasks/05-29-mcp-protocol/prd.md", "reason": "Check implementation against all acceptance criteria"}
