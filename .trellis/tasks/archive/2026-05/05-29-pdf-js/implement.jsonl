@@ -1,0 +1,12 @@
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Frontend directory conventions — reader component placement and lib/ module conventions"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component patterns — PdfViewer, toolbar, and error fallback must follow component conventions"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "State management — zoom level and page position state across tabs"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TypeScript conventions — strict mode, no any, import type rules for new reader code"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Quality bar — ESLint, Prettier, test coverage for new reader code"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook conventions — if we add useZoom, usePageNav, or useVirtualPages hooks"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer data flow — PDF URL construction goes through platform.ts / api.ts"}
+{"file": ".trellis/tasks/05-29-pdf-js/research/pdfjs-integration-in-react-electron.md", "reason": "PDF.js integration patterns — how XReadAgent uses pdfjs-dist, worker setup, rendering approach"}
+{"file": ".trellis/tasks/05-29-pdf-js/research/dual-column-pdf-reader-ux-patterns.md", "reason": "Dual-column UX patterns — BabelDOC alternating-page model, scroll sync strategies"}
+{"file": ".trellis/tasks/05-29-pdf-js/research/frontend-existing.md", "reason": "Complete inventory of existing reader code — PdfViewer, TranslateDialog, paper-read.tsx, API layer, types"}
+{"file": ".trellis/tasks/05-29-pdf-js/research/xreadagent-translation-pipeline.md", "reason": "Translation pipeline trace — API contracts, WS events, manifest structure"}
+{"file": ".trellis/tasks/05-29-pdf-js/prd.md", "reason": "Task PRD — all requirements, decisions, acceptance criteria"}
