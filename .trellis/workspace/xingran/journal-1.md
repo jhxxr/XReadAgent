@@ -460,3 +460,36 @@ Added macOS support to XReadAgent Electron client: universal binary (arm64+x64) 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 14: Fix CI pnpm setup
+
+**Date**: 2026-05-29
+**Task**: Fix CI pnpm setup
+**Branch**: `main`
+
+### Summary
+
+Pinned pnpm v9 in CI and release workflows, updated GitHub Actions to Node 24-capable versions, and verified workflow syntax with actionlint.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4bfb794` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
