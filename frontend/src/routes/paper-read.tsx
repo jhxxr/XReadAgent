@@ -5,6 +5,7 @@ import { ArrowLeftIcon, LanguagesIcon } from "lucide-react";
 import * as React from "react";
 
 import { PdfViewer } from "@/components/reader/pdf-viewer";
+import { PdfToolbar } from "@/components/reader/pdf-toolbar";
 import { TranslateDialog } from "@/components/reader/translate-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { buildWorkspaceFileUrl, getTranslationsManifest } from "@/lib/api";
 import { notifyOnCompletion } from "@/lib/notifications";
 import { readWorkspacePath } from "@/lib/workspace";
 import type { FinishEvent, TranslationEntry, TranslationsManifest } from "@/types/api";
+import type { PdfToolbarProps } from "@/components/reader/pdf-toolbar";
 
 type ReaderTab = "original" | "dual" | "translated";
 
@@ -82,6 +84,15 @@ export function PaperReadRoute() {
   const [tabPinned, setTabPinned] = React.useState(false);
   const [translateOpen, setTranslateOpen] = React.useState(false);
 
+  // Persist zoom level and current page across tab switches.
+  // Each tab has its own page tracking, but zoom is shared.
+  const [zoom, setZoom] = React.useState(100);
+  const [pageStates, setPageStates] = React.useState<Record<ReaderTab, number>>({
+    original: 1,
+    dual: 1,
+    translated: 1,
+  });
+
   // After manifest data arrives, recompute the default tab — unless the
   // user has already picked a tab, in which case we leave their choice
   // alone. This handles "open /read with no dual yet → translate completes
@@ -112,6 +123,20 @@ export function PaperReadRoute() {
       }, 600);
     },
     [queryClient, workspacePath, slug],
+  );
+
+  const handleCurrentPageChange = React.useCallback(
+    (page: number) => {
+      setPageStates((prev) => ({ ...prev, [tab]: page }));
+    },
+    [tab],
+  );
+
+  const renderToolbar = React.useCallback(
+    (props: PdfToolbarProps) => {
+      return <PdfToolbar {...props} />;
+    },
+    [],
   );
 
   return (
@@ -166,25 +191,49 @@ export function PaperReadRoute() {
               </TabsTrigger>
             </TabsList>
           </div>
-          <TabsContent value="original" className="m-0 min-h-0 flex-1 overflow-auto">
+          <TabsContent value="original" className="m-0 min-h-0 flex-1 overflow-hidden">
             {sources.original !== null ? (
-              <PdfViewer url={sources.original} mode="single" />
+              <PdfViewer
+                url={sources.original}
+                mode="single"
+                zoom={zoom}
+                onZoomChange={setZoom}
+                currentPage={pageStates.original}
+                onCurrentPageChange={handleCurrentPageChange}
+                renderToolbar={renderToolbar}
+              />
             ) : (
               <EmptyPaneState>No original PDF on disk for this paper.</EmptyPaneState>
             )}
           </TabsContent>
-          <TabsContent value="dual" className="m-0 min-h-0 flex-1 overflow-auto">
+          <TabsContent value="dual" className="m-0 min-h-0 flex-1 overflow-hidden">
             {sources.dual !== null ? (
-              <PdfViewer url={sources.dual} mode="dual" />
+              <PdfViewer
+                url={sources.dual}
+                mode="dual"
+                zoom={zoom}
+                onZoomChange={setZoom}
+                currentPage={pageStates.dual}
+                onCurrentPageChange={handleCurrentPageChange}
+                renderToolbar={renderToolbar}
+              />
             ) : (
               <EmptyPaneState>
                 No dual PDF yet. Click <span className="font-medium">Translate</span> to create one.
               </EmptyPaneState>
             )}
           </TabsContent>
-          <TabsContent value="translated" className="m-0 min-h-0 flex-1 overflow-auto">
+          <TabsContent value="translated" className="m-0 min-h-0 flex-1 overflow-hidden">
             {sources.mono !== null ? (
-              <PdfViewer url={sources.mono} mode="single" />
+              <PdfViewer
+                url={sources.mono}
+                mode="single"
+                zoom={zoom}
+                onZoomChange={setZoom}
+                currentPage={pageStates.translated}
+                onCurrentPageChange={handleCurrentPageChange}
+                renderToolbar={renderToolbar}
+              />
             ) : (
               <EmptyPaneState>
                 No translated-only PDF yet. Click <span className="font-medium">Translate</span> to

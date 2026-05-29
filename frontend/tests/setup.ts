@@ -29,6 +29,29 @@ Object.defineProperty(window, "scrollTo", {
   value: vi.fn(),
 });
 
+// jsdom does not implement ResizeObserver; PdfViewer uses it to track
+// container width for fit-width calculations.
+class ResizeObserverMock {
+  constructor(_callback: ResizeObserverCallback) {
+    // callback is intentionally unused in test mock
+  }
+  observe(): void {
+    // no-op in tests
+  }
+  unobserve(): void {
+    // no-op in tests
+  }
+  disconnect(): void {
+    // no-op in tests
+  }
+}
+
+Object.defineProperty(window, "ResizeObserver", {
+  writable: true,
+  configurable: true,
+  value: ResizeObserverMock,
+});
+
 beforeEach(() => {
   window.localStorage.clear();
   document.documentElement.classList.remove("dark");

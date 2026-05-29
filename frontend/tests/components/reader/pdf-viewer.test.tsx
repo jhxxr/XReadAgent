@@ -21,6 +21,7 @@ function makePage(pageNumber: number) {
     getViewport: mockGetViewport,
     render: () => ({ promise: mockRenderPromise(), cancel: vi.fn() }),
     cleanup: vi.fn(),
+    getTextContent: vi.fn(() => Promise.resolve({ items: [] })),
   };
 }
 
@@ -29,6 +30,14 @@ const mockGetDocument = vi.fn<(...args: unknown[]) => unknown>();
 vi.mock("pdfjs-dist", () => ({
   GlobalWorkerOptions: { workerSrc: "" },
   getDocument: (...args: unknown[]) => mockGetDocument(...args),
+  TextLayer: class TextLayerMock {
+    render() {
+      return Promise.resolve(undefined);
+    }
+    cancel() {
+      // no-op
+    }
+  },
   InvalidPDFException: class InvalidPDFException extends Error {
     constructor(msg: string) {
       super(msg);

@@ -8,6 +8,7 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -161,5 +162,58 @@ describe("PaperReadRoute", () => {
     expect(dual.hasAttribute("disabled") || dual.getAttribute("aria-disabled") === "true").toBe(
       true,
     );
+  });
+
+  it("preserves zoom level across tab switches", async () => {
+    writeWorkspacePath("/tmp/ws");
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          version: 1,
+          entries: [
+            {
+              sourceSlug: "alpha-aaaaaaaaaaaa",
+              sourceHash: "h1",
+              targetLang: "zh",
+              model: "anthropic:claude-3-7-sonnet-latest",
+              monoPath: "translations/alpha-aaaaaaaaaaaa.mono.pdf",
+              dualPath: "translations/alpha-aaaaaaaaaaaa.dual.pdf",
+              translatedAt: "2026-05-25T10:00:00Z",
+              durationS: 12.5,
+              babeldocVersion: "0.6.2",
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    renderReader();
+
+    // Wait for the Dual tab to be active (it has all three sources available).
+    await waitFor(() => {
+      const dual = screen.getByRole("tab", { name: /^dual$/i });
+      expect(dual.getAttribute("data-state")).toBe("active");
+    });
+
+    // Zoom in using the toolbar button.
+    const zoomInButton = screen.getByLabelText("Zoom in");
+    await userEvent.click(zoomInButton);
+
+    // Verify zoom level changed.
+    await waitFor(() => {
+      expect(screen.getByLabelText(/zoom level/i)).toHaveTextContent("125%");
+    });
+
+    // Switch to the Original tab.
+    const originalTab = screen.getByRole("tab", { name: /^original$/i });
+    await userEvent.click(originalTab);
+
+    await waitFor(() => {
+      expect(originalTab.getAttribute("data-state")).toBe("active");
+    });
+
+    // Zoom level should be preserved across tabs.
+    expect(screen.getByLabelText(/zoom level/i)).toHaveTextContent("125%");
   });
 });

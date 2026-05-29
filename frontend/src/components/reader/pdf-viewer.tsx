@@ -10,6 +10,8 @@ import * as React from "react";
 
 import { ensurePdfWorker } from "@/lib/pdfjs";
 import { usePageRenderer } from "@/lib/use-page-renderer";
+import { ZOOM_DEFAULT, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from "@/components/reader/pdf-toolbar";
+import type { PdfToolbarProps } from "@/components/reader/pdf-toolbar";
 import { cn } from "@/lib/utils";
 
 /**
@@ -30,10 +32,25 @@ export interface PdfViewerProps {
   mode: PdfViewerMode;
   className?: string;
   /**
-   * CSS pixel width of each rendered page canvas. Defaults to 720 which
-   * fits comfortably inside the reader column at typical paper aspect.
+   * Zoom percentage (50-300). When provided, the viewer is controlled by the
+   * parent. When omitted, the viewer manages zoom internally.
    */
-  pageWidth?: number;
+  zoom?: number;
+  /** Callback when zoom changes. */
+  onZoomChange?: (zoom: number) => void;
+  /**
+   * Current 1-based page number for controlled navigation.
+   * When provided along with onNavigateToPage, the viewer is controlled.
+   */
+  currentPage?: number;
+  /** Callback when the current page changes (e.g. user scrolls). */
+  onCurrentPageChange?: (page: number) => void;
+  /** Callback to navigate to a specific page. */
+  onNavigateToPage?: (page: number) => void;
+  /** Total pages callback — fires when document is loaded. */
+  onTotalPagesChange?: (totalPages: number) => void;
+  /** Toolbar render prop. Receives toolbar controls props. */
+  renderToolbar?: (props: PdfToolbarProps) => React.ReactNode;
 }
 
 interface LoadState {
@@ -54,20 +71,61 @@ function isPasswordError(cause: unknown): boolean {
 }
 
 /**
- * PDF viewer with virtual scrolling.
+ * PDF viewer with virtual scrolling, text layer, zoom, and page navigation.
  *
  * Renders only pages in the current viewport (+ buffer) instead of all pages
  * at once. Uses `@tanstack/react-virtual` for virtualization. Each virtual
  * "row" is either one page (single mode) or two pages side-by-side (dual
  * mode). Page rendering is delegated to `usePageRenderer` for extensibility.
  */
-export function PdfViewer({ url, mode, className, pageWidth = 720 }: PdfViewerProps) {
+export function PdfViewer({
+  url,
+  mode,
+  className,
+  zoom: controlledZoom,
+  onZoomChange: controlledOnZoomChange,
+  currentPage: controlledCurrentPage,
+  onCurrentPageChange,
+  onNavigateToPage: controlledOnNavigateToPage,
+  onTotalPagesChange,
+  renderToolbar,
+}: PdfViewerProps) {
   const [state, setState] = React.useState<LoadState>({
     status: "loading",
     doc: null,
     error: null,
     progress: null,
   });
+
+  // Internal zoom state (used when not controlled).
+  const [internalZoom, setInternalZoom] = React.useState(ZOOM_DEFAULT);
+  // Internal current page state (used when not controlled).
+  const [internalCurrentPage, setInternalCurrentPage] = React.useState(1);
+
+  const zoom = controlledZoom ?? internalZoom;
+  const currentPage = controlledCurrentPage ?? internalCurrentPage;
+
+  const handleZoomChange = React.useCallback(
+    (newZoom: number) => {
+      const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
+      if (controlledOnZoomChange !== undefined) {
+        controlledOnZoomChange(clamped);
+      } else {
+        setInternalZoom(clamped);
+      }
+    },
+    [controlledOnZoomChange],
+  );
+
+  const handleCurrentPageChange = React.useCallback(
+    (page: number) => {
+      if (onCurrentPageChange !== undefined) {
+        onCurrentPageChange(page);
+      }
+      setInternalCurrentPage(page);
+    },
+    [onCurrentPageChange],
+  );
 
   React.useEffect(() => {
     ensurePdfWorker();
@@ -96,6 +154,7 @@ export function PdfViewer({ url, mode, className, pageWidth = 720 }: PdfViewerPr
           return;
         }
         setState({ status: "ready", doc, error: null, progress: 1 });
+        onTotalPagesChange?.(doc.numPages);
       } catch (cause) {
         if (cancelled) return;
         let message = "Failed to load PDF";
@@ -118,11 +177,11 @@ export function PdfViewer({ url, mode, className, pageWidth = 720 }: PdfViewerPr
         void loadingTask.destroy();
       }
     };
-  }, [url]);
+  }, [url, onTotalPagesChange]);
 
   if (state.status === "loading") {
     const pct =
-      state.progress !== null ? `${Math.round(state.progress * 100)}%` : "…";
+      state.progress !== null ? `${Math.round(state.progress * 100)}%` : "...";
     return (
       <div
         data-slot="pdf-viewer"
@@ -163,7 +222,17 @@ export function PdfViewer({ url, mode, className, pageWidth = 720 }: PdfViewerPr
   }
 
   return (
-    <PdfPages doc={state.doc} mode={mode} pageWidth={pageWidth} className={className} />
+    <PdfPages
+      doc={state.doc}
+      mode={mode}
+      zoom={zoom}
+      onZoomChange={handleZoomChange}
+      currentPage={currentPage}
+      onCurrentPageChange={handleCurrentPageChange}
+      onNavigateToPage={controlledOnNavigateToPage}
+      renderToolbar={renderToolbar}
+      className={className}
+    />
   );
 }
 
@@ -179,12 +248,36 @@ interface Row {
 interface PdfPagesProps {
   doc: PDFDocumentProxy;
   mode: PdfViewerMode;
-  pageWidth: number;
+  zoom: number;
+  onZoomChange: (zoom: number) => void;
+  currentPage: number;
+  onCurrentPageChange: (page: number) => void;
+  onNavigateToPage?: (page: number) => void;
+  renderToolbar?: (props: PdfToolbarProps) => React.ReactNode;
   className?: string;
 }
 
-function PdfPages({ doc, mode, pageWidth, className }: PdfPagesProps) {
+function PdfPages({
+  doc,
+  mode,
+  zoom,
+  onZoomChange,
+  currentPage,
+  onCurrentPageChange,
+  onNavigateToPage,
+  renderToolbar,
+  className,
+}: PdfPagesProps) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const containerWidthRef = React.useRef(0);
+
+  // Compute the base page width at 100% zoom.
+  // We use 720 as the default base width; fit-width mode would compute from
+  // the container, but the container width varies so we track it.
+  const BASE_PAGE_WIDTH = 720;
+
+  // The effective page width at the current zoom level.
+  const pageWidth = Math.round(BASE_PAGE_WIDTH * (zoom / 100));
 
   // Build the list of rows from the document page count and mode.
   const rows: readonly Row[] = React.useMemo(() => {
@@ -202,6 +295,12 @@ function PdfPages({ doc, mode, pageWidth, className }: PdfPagesProps) {
     }
     return result;
   }, [doc, mode]);
+
+  // Map from row index to the first page number in that row.
+  // Used to determine which page is currently in view.
+  const rowToFirstPage = React.useMemo(() => {
+    return rows.map((row) => row.pages[0] ?? 1);
+  }, [rows]);
 
   // Estimate row heights. We need a way to give the virtualizer a good
   // estimate before a row is actually rendered. Strategy:
@@ -247,61 +346,203 @@ function PdfPages({ doc, mode, pageWidth, className }: PdfPagesProps) {
     overscan: 3,
   });
 
+  // Track which page is currently in view based on the virtualizer.
+  // We observe which virtual rows are visible and pick the first one.
+  const virtualItems = virtualizer.getVirtualItems();
+
+  React.useEffect(() => {
+    if (virtualItems.length === 0) return;
+    // Find the row closest to the center of the viewport.
+    const scrollElement = scrollRef.current;
+    if (scrollElement === null) return;
+
+    const viewportCenter = scrollElement.scrollTop + scrollElement.clientHeight / 2;
+
+    let closestRow = virtualItems[0];
+    if (closestRow === undefined) return;
+    let closestDistance = Infinity;
+
+    for (const item of virtualItems) {
+      const itemCenter = item.start + (item.size / 2);
+      const distance = Math.abs(viewportCenter - itemCenter);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestRow = item;
+      }
+    }
+
+    if (closestRow !== undefined) {
+      const firstPage = rowToFirstPage[closestRow.index];
+      if (firstPage !== undefined && firstPage !== currentPage) {
+        onCurrentPageChange(firstPage);
+      }
+    }
+  }, [virtualItems, rowToFirstPage, currentPage, onCurrentPageChange]);
+
+  // Handle navigate to page: scroll the virtualizer so the row containing
+  // the target page is in view.
+  const handleNavigateToPage = React.useCallback(
+    (page: number) => {
+      if (onNavigateToPage !== undefined) {
+        onNavigateToPage(page);
+        return;
+      }
+      // Find the row index that contains this page.
+      const rowIndex = rows.findIndex((row) => row.pages.includes(page));
+      if (rowIndex >= 0) {
+        virtualizer.scrollToIndex(rowIndex, { align: "center" });
+      }
+    },
+    [onNavigateToPage, rows, virtualizer],
+  );
+
+  // Track container width for fit-width calculations.
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (el === null) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        containerWidthRef.current = entry.contentRect.width;
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // Keyboard shortcuts for zoom and navigation.
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (el === null) return;
+
+    function handleKeyDown(e: KeyboardEvent) {
+      const isCtrl = e.ctrlKey || e.metaKey;
+
+      // Zoom shortcuts
+      if (isCtrl && (e.key === "=" || e.key === "+")) {
+        e.preventDefault();
+        onZoomChange(Math.min(zoom + ZOOM_STEP, ZOOM_MAX));
+      } else if (isCtrl && e.key === "-") {
+        e.preventDefault();
+        onZoomChange(Math.max(zoom - ZOOM_STEP, ZOOM_MIN));
+      } else if (isCtrl && e.key === "0") {
+        e.preventDefault();
+        onZoomChange(ZOOM_DEFAULT);
+      }
+      // Page navigation shortcuts (only when no input is focused)
+      else if (
+        e.key === "PageUp" &&
+        !(e.target instanceof HTMLInputElement) &&
+        !(e.target instanceof HTMLTextAreaElement)
+      ) {
+        e.preventDefault();
+        if (currentPage > 1) {
+          handleNavigateToPage(currentPage - 1);
+        }
+      } else if (
+        e.key === "PageDown" &&
+        !(e.target instanceof HTMLInputElement) &&
+        !(e.target instanceof HTMLTextAreaElement)
+      ) {
+        e.preventDefault();
+        if (currentPage < doc.numPages) {
+          handleNavigateToPage(currentPage + 1);
+        }
+      } else if (
+        e.key === "Home" &&
+        !(e.target instanceof HTMLInputElement) &&
+        !(e.target instanceof HTMLTextAreaElement)
+      ) {
+        e.preventDefault();
+        handleNavigateToPage(1);
+      } else if (
+        e.key === "End" &&
+        !(e.target instanceof HTMLInputElement) &&
+        !(e.target instanceof HTMLTextAreaElement)
+      ) {
+        e.preventDefault();
+        handleNavigateToPage(doc.numPages);
+      }
+    }
+
+    el.addEventListener("keydown", handleKeyDown);
+    return () => el.removeEventListener("keydown", handleKeyDown);
+  }, [zoom, onZoomChange, currentPage, doc.numPages, handleNavigateToPage]);
+
+  // Make the scroll container focusable for keyboard events.
+  const handleContainerMouseDown = React.useCallback(() => {
+    scrollRef.current?.focus();
+  }, []);
+
+  const toolbarProps: PdfToolbarProps = {
+    zoom,
+    onZoomChange,
+    currentPage,
+    totalPages: doc.numPages,
+    onNavigateToPage: handleNavigateToPage,
+    isLoading: false,
+  };
+
   return (
-    <div
-      data-slot="pdf-viewer"
-      data-state="ready"
-      data-mode={mode}
-      className={cn("h-full overflow-auto", className)}
-      ref={scrollRef}
-    >
+    <div className={cn("flex h-full flex-col", className)}>
+      {renderToolbar?.(toolbarProps)}
       <div
-        style={{
-          height: `${virtualizer.getTotalSize().toString()}px`,
-          width: "100%",
-          position: "relative",
-        }}
+        data-slot="pdf-viewer"
+        data-state="ready"
+        data-mode={mode}
+        className="h-full overflow-auto outline-none"
+        ref={scrollRef}
+        tabIndex={-1}
+        onMouseDown={handleContainerMouseDown}
       >
-        {virtualizer.getVirtualItems().map((virtualRow) => {
-          const row = rows[virtualRow.index];
-          if (row === undefined) return null;
-          return (
-            <div
-              key={virtualRow.key}
-              data-index={virtualRow.index}
-              ref={virtualizer.measureElement}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                transform: `translateY(${virtualRow.start.toString()}px)`,
-              }}
-              className="flex justify-center px-4 py-3"
-            >
+        <div
+          style={{
+            height: `${virtualizer.getTotalSize().toString()}px`,
+            width: "100%",
+            position: "relative",
+          }}
+        >
+          {virtualizer.getVirtualItems().map((virtualRow) => {
+            const row = rows[virtualRow.index];
+            if (row === undefined) return null;
+            return (
               <div
-                data-slot="pdf-pair"
-                className={cn(
-                  "grid items-start gap-4",
-                  isDual
-                    ? "w-full max-w-[1600px] grid-cols-1 md:grid-cols-2"
-                    : "w-full max-w-[800px] grid-cols-1",
-                )}
+                key={virtualRow.key}
+                data-index={virtualRow.index}
+                ref={virtualizer.measureElement}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${virtualRow.start.toString()}px)`,
+                }}
+                className="flex justify-center px-4 py-3"
               >
-                {row.pages.map((pageNumber) => (
-                  <PdfPage
-                    key={pageNumber}
-                    doc={doc}
-                    pageNumber={pageNumber}
-                    pageWidth={pageWidth}
-                  />
-                ))}
-                {/* In dual mode, if a row has only one page, add a blank cell. */}
-                {isDual && row.pages.length === 1 && <div aria-hidden className="h-1" />}
+                <div
+                  data-slot="pdf-pair"
+                  className={cn(
+                    "grid items-start gap-4",
+                    isDual
+                      ? "w-full max-w-[1600px] grid-cols-1 md:grid-cols-2"
+                      : "w-full max-w-[800px] grid-cols-1",
+                  )}
+                >
+                  {row.pages.map((pageNumber) => (
+                    <PdfPage
+                      key={pageNumber}
+                      doc={doc}
+                      pageNumber={pageNumber}
+                      pageWidth={pageWidth}
+                    />
+                  ))}
+                  {/* In dual mode, if a row has only one page, add a blank cell. */}
+                  {isDual && row.pages.length === 1 && <div aria-hidden className="h-1" />}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -318,7 +559,11 @@ interface PdfPageProps {
 }
 
 function PdfPage({ doc, pageNumber, pageWidth }: PdfPageProps) {
-  const { canvasRef, isLoading, error, pageHeight } = usePageRenderer(doc, pageNumber, pageWidth);
+  const { canvasRef, textLayerRef, isLoading, error, pageHeight } = usePageRenderer(
+    doc,
+    pageNumber,
+    pageWidth,
+  );
 
   if (error !== null) {
     return (
@@ -348,12 +593,19 @@ function PdfPage({ doc, pageNumber, pageWidth }: PdfPageProps) {
   }
 
   return (
-    <canvas
-      ref={canvasRef}
-      data-slot="pdf-page"
-      data-page={pageNumber}
-      aria-label={`Page ${pageNumber.toString()}`}
-      className="border-border/60 bg-background rounded border shadow-sm"
-    />
+    <div data-slot="pdf-page-container" data-page={pageNumber} className="relative">
+      <canvas
+        ref={canvasRef}
+        data-slot="pdf-page"
+        data-page={pageNumber}
+        aria-label={`Page ${pageNumber.toString()}`}
+        className="border-border/60 bg-background rounded border shadow-sm"
+      />
+      <div
+        ref={textLayerRef}
+        className="pdf-text-layer absolute inset-0"
+        aria-hidden="true"
+      />
+    </div>
   );
 }

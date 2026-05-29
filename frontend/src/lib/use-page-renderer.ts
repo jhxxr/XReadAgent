@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { TextLayer } from "pdfjs-dist";
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
 import * as React from "react";
 
@@ -6,6 +7,7 @@ import * as React from "react";
  * Result of the page renderer hook.
  *
  * - `canvasRef` — attach to a `<canvas>` element in the DOM.
+ * - `textLayerRef` — attach to a `<div>` element that will host the text layer.
  * - `isLoading` — true while the page is being fetched/rendered.
  * - `error` — non-null when the page failed to load or render.
  * - `pageHeight` — the rendered height of the page in CSS pixels, or an
@@ -13,23 +15,26 @@ import * as React from "react";
  */
 export interface PageRendererResult {
   canvasRef: React.RefCallback<HTMLCanvasElement>;
+  textLayerRef: React.RefCallback<HTMLDivElement>;
   isLoading: boolean;
   error: string | null;
   pageHeight: number;
 }
 
 /**
- * Renders a single PDF page to a canvas element.
+ * Renders a single PDF page to a canvas element and overlays a transparent
+ * text layer for selection.
  *
  * The hook manages the full lifecycle:
  * 1. Fetches the page from the document proxy via `doc.getPage(pageNumber)`.
  * 2. Computes the viewport at the scale that fits `pageWidth`.
  * 3. Renders the page to the canvas (using a ref callback).
- * 4. Cleans up the PDFPageProxy on unmount or when inputs change.
+ * 4. Renders the pdfjs-dist TextLayer on top of the canvas.
+ * 5. Cleans up the PDFPageProxy and TextLayer on unmount or when inputs change.
  *
  * This abstraction decouples page rendering from the virtual-list layout,
- * making it straightforward to add text-layer overlay, search highlighting,
- * or annotation layers in future PRs.
+ * making it straightforward to add search highlighting or annotation layers
+ * in future PRs.
  *
  * @param doc         The loaded PDF document proxy.
  * @param pageNumber  1-based page number.
@@ -48,8 +53,12 @@ export function usePageRenderer(
   const pageRef = React.useRef<PDFPageProxy | null>(null);
   // Track the current render task so we can cancel it.
   const renderTaskRef = React.useRef<RenderTask | null>(null);
+  // Track the current TextLayer instance so we can cancel it.
+  const textLayerInstanceRef = React.useRef<TextLayer | null>(null);
   // Track whether the component is still mounted.
   const mountedRef = React.useRef(true);
+  // Track the text layer container DOM element.
+  const textLayerContainerRef = React.useRef<HTMLDivElement | null>(null);
 
   // Reset state when inputs change.
   React.useEffect(() => {
@@ -65,6 +74,10 @@ export function usePageRenderer(
       if (renderTaskRef.current !== null) {
         renderTaskRef.current.cancel();
         renderTaskRef.current = null;
+      }
+      if (textLayerInstanceRef.current !== null) {
+        textLayerInstanceRef.current.cancel();
+        textLayerInstanceRef.current = null;
       }
       if (pageRef.current !== null) {
         pageRef.current.cleanup();
@@ -82,7 +95,11 @@ export function usePageRenderer(
         renderTaskRef.current.cancel();
         renderTaskRef.current = null;
       }
-      // Clean up previous page.
+      // Clean up previous page and text layer.
+      if (textLayerInstanceRef.current !== null) {
+        textLayerInstanceRef.current.cancel();
+        textLayerInstanceRef.current = null;
+      }
       if (pageRef.current !== null) {
         pageRef.current.cleanup();
         pageRef.current = null;
@@ -160,5 +177,87 @@ export function usePageRenderer(
     [doc, pageNumber, pageWidth],
   );
 
-  return { canvasRef, isLoading, error, pageHeight };
+  // Ref callback for the text layer container div — just stores the element.
+  const textLayerRef = React.useCallback((containerEl: HTMLDivElement | null) => {
+    textLayerContainerRef.current = containerEl;
+
+    // Clear any existing text layer when the container changes.
+    if (textLayerInstanceRef.current !== null) {
+      textLayerInstanceRef.current.cancel();
+      textLayerInstanceRef.current = null;
+    }
+    if (containerEl !== null) {
+      // Clear any stale DOM content from a previous render.
+      while (containerEl.firstChild !== null) {
+        containerEl.removeChild(containerEl.firstChild);
+      }
+    }
+  }, []);
+
+  // Effect: render the text layer once the page proxy and container are both
+  // available. This handles the async timing gap between the canvas ref
+  // callback (which fetches and stores the page proxy) and the text layer
+  // container mount. We include `isLoading` as a dependency so that when
+  // canvas rendering completes (isLoading transitions false), the effect
+  // re-evaluates and finds the page proxy ready.
+  React.useEffect(() => {
+    const page = pageRef.current;
+    const container = textLayerContainerRef.current;
+    if (page === null || container === null) return;
+
+    // Store narrowed values as const so the closure retains the non-null type.
+    const narrowedPage = page;
+    const narrowedContainer = container;
+
+    // Cancel any existing text layer.
+    if (textLayerInstanceRef.current !== null) {
+      textLayerInstanceRef.current.cancel();
+      textLayerInstanceRef.current = null;
+    }
+
+    let cancelled = false;
+
+    async function renderTextLayer() {
+      try {
+        // Clear any existing content in the container.
+        while (narrowedContainer.firstChild !== null) {
+          narrowedContainer.removeChild(narrowedContainer.firstChild);
+        }
+
+        const baseViewport = narrowedPage.getViewport({ scale: 1 });
+        const scale = pageWidth / baseViewport.width;
+        const viewport = narrowedPage.getViewport({ scale });
+
+        const textContent = await narrowedPage.getTextContent();
+        if (cancelled || !mountedRef.current) return;
+
+        const textLayer = new TextLayer({
+          textContentSource: textContent,
+          container: narrowedContainer,
+          viewport,
+        });
+        textLayerInstanceRef.current = textLayer;
+        await textLayer.render();
+      } catch (cause) {
+        if (cancelled || !mountedRef.current) return;
+        // Text layer failures are non-fatal — the canvas still renders fine.
+        const errName = (cause as { name?: string } | null)?.name;
+        if (errName === "RenderingCancelledException") return;
+        // Silently ignore text layer errors — canvas rendering is the primary
+        // concern and text layer is a best-effort overlay.
+      }
+    }
+
+    void renderTextLayer();
+
+    return () => {
+      cancelled = true;
+      if (textLayerInstanceRef.current !== null) {
+        textLayerInstanceRef.current.cancel();
+        textLayerInstanceRef.current = null;
+      }
+    };
+  }, [doc, pageNumber, pageWidth, isLoading]);
+
+  return { canvasRef, textLayerRef, isLoading, error, pageHeight };
 }
