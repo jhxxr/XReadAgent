@@ -1,0 +1,29 @@
+{
+  "id": "phase-4-sqlite-vec-mcp-macos",
+  "name": "phase-4-sqlite-vec-mcp-macos",
+  "title": "Phase 4: sqlite-vec 向量检索 + MCP 协议 + macOS 支持",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "xingran",
+  "assignee": "xingran",
+  "createdAt": "2026-05-29",
+  "completedAt": "2026-05-29",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "05-29-sqlite-vec",
+    "05-29-mcp-protocol"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
