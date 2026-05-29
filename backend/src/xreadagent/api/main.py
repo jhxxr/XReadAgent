@@ -231,6 +231,18 @@ def create_app(
                 except RuntimeError:
                     pass
 
+    # Mount the MCP (Model Context Protocol) server under /mcp.
+    # The MCP server exposes XReadAgent capabilities as tools and resources
+    # for external AI tools (Claude Desktop, Cursor, etc.) via Streamable HTTP.
+    try:
+        from xreadagent.mcp import create_mcp_app
+
+        mcp_app = create_mcp_app()
+        app.mount("/mcp", mcp_app.streamable_http_app())
+    except ImportError:
+        # mcp SDK not installed — MCP endpoints are not available.
+        pass
+
     return app
 
 

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "xreadagent": {
+      "command": "python",
+      "args": ["-m", "xreadagent.mcp"],
+      "env": {
+        "XREAD_AGENT_WORKSPACE": "/path/to/XReadAgent-Workspace"
+      }
+    }
+  }
+}

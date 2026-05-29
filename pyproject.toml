@@ -45,6 +45,11 @@ dependencies = [
     # install-time dep but our code never touches it.
     "optimum[onnxruntime]>=1.20",
     "transformers>=4.40",
+    # MCP (Model Context Protocol) server SDK. Exposes XReadAgent as an
+    # MCP server so external AI tools (Claude Desktop, Cursor, etc.) can
+    # call ingest/query/translate/browse as tools. Zero dependency conflicts
+    # with the existing stack (pydantic>=2.11, httpx, starlette, uvicorn).
+    "mcp>=1.27",
 ]
 
 [project.optional-dependencies]
@@ -130,6 +135,8 @@ module = [
     "transformers.*",
     "torch",
     "numpy",
+    "mcp",
+    "mcp.*",
 ]
 ignore_missing_imports = true
 
