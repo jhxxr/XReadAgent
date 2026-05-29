@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/electron/index.md", "reason": "Hard rules (7 rules), testing conventions — verify E2E test and CI workflow comply"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Quality guidelines, error handling — verify CI test config and E2E sidecar test comply"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Quality guidelines, ESLint/Prettier config — verify CI lint/typecheck config comply"}
