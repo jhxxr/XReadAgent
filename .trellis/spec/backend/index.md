@@ -64,6 +64,8 @@ These are the rules a sub-agent must follow without re-litigating:
 | Phase 2A (BabelDOC translation backend + API + CLI) | Complete | (this dispatch) |
 | Phase 2B (PDF.js reader + Translate dialog) | Next |  |
 | Phase 3 (Electron wrapper + native integrations + packaging) | Complete | `165947c..676fd84` |
-| Phase 4 (sqlite-vec + MCP + macOS) | Planned |  |
+| Phase 4A (sqlite-vec semantic search) | Complete | `b17110c` |
+| Phase 4B (MCP protocol integration) | Complete | `2fb0196` |
+| Phase 4C (macOS support) | Planned |  |
 
 See `.trellis/tasks/05-22-build-sciresearch-agent-literature-reading-knowledge-base/plan.md` for the full roadmap.
