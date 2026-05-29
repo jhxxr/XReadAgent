@@ -11,7 +11,7 @@
  * In CI, the backend dependencies are installed via `uv sync` before
  * this test runs. Locally, run `uv sync` from the project root first.
  */
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, afterAll } from "vitest";
 import { spawn } from "node:child_process";
 import * as http from "node:http";
 import * as fs from "node:fs";
