@@ -11,7 +11,7 @@
  *
  * Prerequisites:
  *   - `uv` must be installed (https://docs.astral.sh/uv/)
- *   - Backend pyproject.toml must exist at backend/pyproject.toml
+ *   - Project pyproject.toml must exist at the repository root
  *   - Internet access for downloading python-build-standalone and pip packages
  *
  * Output:
@@ -30,6 +30,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..", "..");
 const electronDir = path.resolve(__dirname, "..");
 const backendDir = path.resolve(rootDir, "backend");
+const projectPyprojectPath = path.join(rootDir, "pyproject.toml");
 const resourcesDir = path.resolve(electronDir, "resources");
 const pythonDir = path.join(resourcesDir, "python");
 const backendOutDir = path.join(resourcesDir, "backend");
@@ -106,8 +107,8 @@ async function main() {
   }
   console.log("[bundle-python] Found `uv` on PATH.");
 
-  if (!fs.existsSync(path.join(backendDir, "pyproject.toml"))) {
-    console.error(`[bundle-python] Backend pyproject.toml not found at ${backendDir}/pyproject.toml`);
+  if (!fs.existsSync(projectPyprojectPath)) {
+    console.error(`[bundle-python] Project pyproject.toml not found at ${projectPyprojectPath}`);
     process.exit(1);
   }
 
@@ -160,7 +161,7 @@ async function main() {
       // The zip extracts to: tmpDir/cpython-...-install_only/python/
       // We need to find the "python/" subdirectory and move its contents.
       const extracted = fs.readdirSync(tmpDir);
-      let pythonSrcDir: string | null = null;
+      let pythonSrcDir = null;
 
       for (const entry of extracted) {
         const entryPath = path.join(tmpDir, entry);
@@ -242,18 +243,17 @@ async function main() {
   run(`uv venv "${venvDir}" --python "${resolvedPythonExe}"`);
 
   // Install backend dependencies into the venv.
-  // Use a non-editable install: editable installs create .pth files pointing to
-  // the source directory, but in production the source moves to resources/backend/.
-  // Instead, we install dependencies only (not the xreadagent package itself) —
-  // the xreadagent package is found via PYTHONPATH at runtime.
-  const pipExe = PLATFORM === "win32"
-    ? path.join(venvDir, "Scripts", "pip.exe")
-    : path.join(venvDir, "bin", "pip");
+  // Use a non-editable project install so uv resolves dependencies from the root
+  // pyproject.toml. At runtime, resources/backend is placed on PYTHONPATH so the
+  // packaged source copied below takes precedence over the wheel copy.
+  const venvPythonExe = PLATFORM === "win32"
+    ? path.join(venvDir, "Scripts", "python.exe")
+    : path.join(venvDir, "bin", "python");
 
   // Install the backend package dependencies (non-editable) into the venv.
   // This resolves all transitive deps from pyproject.toml and installs them
   // into the venv's site-packages.
-  run(`uv pip install --python "${pipExe}" "${backendDir}"`);
+  run(`uv pip install --python "${venvPythonExe}" "${rootDir}"`);
 
   console.log("[bundle-python] Dependencies installed.");
 
@@ -281,7 +281,7 @@ async function main() {
 
   // Copy pyproject.toml for reference (version info, dependency metadata).
   fs.copyFileSync(
-    path.join(backendDir, "pyproject.toml"),
+    projectPyprojectPath,
     path.join(backendOutDir, "pyproject.toml"),
   );
 

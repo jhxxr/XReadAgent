@@ -85,6 +85,22 @@ electron/
 6. On app quit: SIGTERM → 5s timeout → SIGKILL (Unix) / taskkill /F (Windows)
 ```
 
+### Release Python Bundle Contract
+
+`electron/scripts/bundle-python.mjs` is executed directly by Node in the Release workflow via
+`cd electron && pnpm pack:python`.
+
+- The script must be plain JavaScript ESM. Do not use TypeScript-only syntax in `.mjs` files.
+- Python package metadata lives at the repository root `pyproject.toml`, not
+  `backend/pyproject.toml`.
+- Dependency installation must resolve from the repository root so Hatch can use
+  `[tool.hatch.build.targets.wheel] packages = ["backend/src/xreadagent"]`.
+- Runtime source is still copied from `backend/src/xreadagent` into
+  `electron/resources/backend/xreadagent`; production sidecar startup relies on
+  `PYTHONPATH=resources/backend`.
+- When installing into the bundled venv with `uv pip install --python`, pass the venv's
+  Python executable (`Scripts/python.exe` on Windows, `bin/python` on POSIX), not pip.
+
 ### IPC Bridge Contract
 
 The preload script exposes `window.electronAPI` with these methods:
