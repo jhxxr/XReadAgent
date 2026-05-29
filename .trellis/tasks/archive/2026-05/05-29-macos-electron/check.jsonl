@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/electron/index.md", "reason": "Verify macOS changes follow Electron spec conventions"}
+{"file": ".trellis/tasks/05-29-macos-electron/prd.md", "reason": "Check implementation against all acceptance criteria"}
