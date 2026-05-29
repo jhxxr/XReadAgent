@@ -35,6 +35,8 @@ frontend/
     └── routes/<name>.test.tsx
 ```
 
+**`components/reader/`** — PDF reading components: `pdf-viewer.tsx` (virtual scrolling renderer), `pdf-toolbar.tsx` (zoom + page navigation), `translate-dialog.tsx` (BabelDOC translation UI).
+
 New in Phase 3 (Electron wrapper):
 
 - `src/lib/platform.ts` — Dual-environment detection: `isElectron()`, `getApiBaseUrl()`, `getWsBaseUrl()`, `onDeepLink()`, `onOpenWorkspace()`, `onMenuNavigate()`.
