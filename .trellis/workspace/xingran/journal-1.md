@@ -526,3 +526,36 @@ Investigated GitHub Actions run 26626760823, aligned workflow pnpm setup with pn
 ### Next Steps
 
 - None - task complete
+
+
+## Session 16: Pin pnpm for Node 20 CI
+
+**Date**: 2026-05-29
+**Task**: Pin pnpm for Node 20 CI
+**Branch**: `main`
+
+### Summary
+
+Investigated GitHub Actions run 26631668444 and fixed setup-node failures by pinning pnpm to 10.34.1, which remains compatible with the workflow's Node 20 runtime while avoiding pnpm 11's Node 22 requirement.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cf2883e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
