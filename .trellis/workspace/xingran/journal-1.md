@@ -358,3 +358,38 @@ Enhanced PDF reader from basic canvas rendering to full-featured reading experie
 ### Next Steps
 
 - None - task complete
+
+
+## Session 11: Phase 4A+4B: sqlite-vec semantic search + MCP protocol
+
+**Date**: 2026-05-29
+**Task**: Phase 4A+4B: sqlite-vec semantic search + MCP protocol
+**Branch**: `main`
+
+### Summary
+
+Implemented Phase 4A (sqlite-vec) and Phase 4B (MCP protocol). sqlite-vec: VectorStore with vec0+FTS5 hybrid search, ONNX embedder (no torch), RRF fusion, ingest-time embedding, reindex CLI, /api/search and /api/reindex endpoints. MCP: FastMCP server with 9 tools + 3 resources, elicit confirmation for expensive ops, HTTP transport at /mcp, stdio transport for Claude Desktop, config examples for Claude Desktop and Cursor. 389 backend tests passing.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b17110c` | (see git log) |
+| `2fb0196` | (see git log) |
+| `6042f30` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
