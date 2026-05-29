@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 9
-- **Last Active**: 2026-05-28
+- **Total Sessions**: 10
+- **Last Active**: 2026-05-29
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~324 | Active |
+| `journal-1.md` | ~360 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 10 | 2026-05-29 | PDF.js reader: virtual scroll, text layer, zoom, page nav, robustness | `afda48a`, `2f0c4cd`, `cf92ebe`, `605faa0` | `main` |
 | 9 | 2026-05-28 | Electron desktop client: shell, IPC, native integrations, packaging | `165947c`, `50ddfd7`, `ef63b42`, `e7a7798`, `676fd84`, `0a69554` | `main` |
 | 8 | 2026-05-28 | Test coverage: settings API + frontend routes + shell components | `0f652f5`, `11a7cd7` | `main` |
 | 7 | 2026-05-27 | Settings UI + Copilot Sidebar | `2b0bf74`, `350a624` | `main` |

@@ -322,3 +322,39 @@ Implemented full Electron desktop client for XReadAgent across 5 PRs: (1) Electr
 ### Next Steps
 
 - None - task complete
+
+
+## Session 10: PDF.js reader: virtual scroll, text layer, zoom, page nav, robustness
+
+**Date**: 2026-05-29
+**Task**: PDF.js reader: virtual scroll, text layer, zoom, page nav, robustness
+**Branch**: `main`
+
+### Summary
+
+Enhanced PDF reader from basic canvas rendering to full-featured reading experience: (1) virtual scrolling with @tanstack/react-virtual, (2) usePageRenderer hook for extensible page rendering, (3) TextLayer for text selection, (4) zoom controls 50-300% with keyboard shortcuts, (5) page navigation with editable input, (6) PDF loading progress and retry mechanism, (7) encrypted/corrupted PDF error handling, (8) cross-tab state preservation for zoom and page position, (9) toolbar with tooltips and responsive layout. 138 frontend tests passing.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `afda48a` | (see git log) |
+| `2f0c4cd` | (see git log) |
+| `cf92ebe` | (see git log) |
+| `605faa0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
