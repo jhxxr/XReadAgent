@@ -7,7 +7,9 @@ stays in ``xreadagent.wiki.*`` — and their return values are JSON-friendly so
 LangChain serialization is a no-op.
 
 The factory ``build_ingest_tools`` closes each tool over a ``Workspace`` so the
-agent never has to manage paths itself.
+agent never has to manage paths itself. Eight tools are provided: read_extract,
+list_papers, list_concepts, read_paper, read_concept, search_wiki, read_index,
+and semantic_search (hybrid vector + FTS5).
 """
 
 from __future__ import annotations
@@ -46,7 +48,7 @@ def _list_page_meta(directory: Path) -> list[dict[str, Any]]:
 
 
 def build_ingest_tools(workspace: Workspace) -> list[BaseTool]:
-    """Build the seven tools the ingest agent uses to inspect workspace state."""
+    """Build the eight tools the ingest agent uses to inspect workspace state."""
 
     @tool
     def read_extract(slug: str) -> str:
@@ -99,8 +101,7 @@ def build_ingest_tools(workspace: Workspace) -> list[BaseTool]:
             return ""
         return _read_text(workspace.concepts_dir / f"{clean}.md")
 
-    @tool
-    def search_wiki(pattern: str) -> list[dict[str, Any]]:
+    def _grep_wiki(pattern: str) -> list[dict[str, Any]]:
         """Grep ``pattern`` across ``wiki/*.md``; returns up to 50 hits."""
         needle = pattern.strip()
         if not needle:
@@ -122,9 +123,47 @@ def build_ingest_tools(workspace: Workspace) -> list[BaseTool]:
         return hits
 
     @tool
+    def search_wiki(pattern: str) -> list[dict[str, Any]]:
+        """Grep ``pattern`` across ``wiki/*.md``; returns up to 50 hits."""
+        return _grep_wiki(pattern)
+
+    @tool
     def read_index() -> str:
         """Return the current ``wiki/index.md`` body."""
         return _read_text(workspace.index_md_path)
+
+    @tool
+    def semantic_search(query: str) -> list[dict[str, Any]]:
+        """Search wiki pages by semantic similarity. Returns top-10 matches.
+
+        Uses hybrid vector + full-text search with Reciprocal Rank Fusion.
+        Falls back to keyword search when the vector index is unavailable.
+        Each result contains: slug, title, page_type, score, source.
+        """
+        clean = query.strip()
+        if not clean:
+            return []
+        try:
+            from xreadagent.wiki.search import semantic_search as _semantic_search
+
+            results = _semantic_search(clean, workspace, top_k=10)
+            return [
+                {
+                    "slug": r.slug,
+                    "title": r.title,
+                    "page_type": r.page_type,
+                    "score": r.score,
+                    "source": r.source,
+                    "snippet": r.snippet,
+                }
+                for r in results
+            ]
+        except Exception:  # noqa: BLE001
+            # Degrade to keyword search when semantic search is unavailable.
+            # Broad catch is intentional: any failure in the vector/FTS pipeline
+            # (missing deps, corrupt vec.sqlite, embedding model error) should
+            # fall back gracefully rather than crash the agent tool loop.
+            return _grep_wiki(clean)
 
     tools: list[BaseTool] = [
         read_extract,
@@ -134,6 +173,7 @@ def build_ingest_tools(workspace: Workspace) -> list[BaseTool]:
         read_concept,
         search_wiki,
         read_index,
+        semantic_search,
     ]
     return tools
 

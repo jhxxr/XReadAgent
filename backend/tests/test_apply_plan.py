@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from xreadagent.agents.ingest import apply_plan
+from xreadagent.agents.ingest import apply_plan, embed_pages_after_ingest
 from xreadagent.agents.ingest_schema import (
     IngestConceptTouch,
     IngestPaperPage,
@@ -339,3 +339,45 @@ def test_apply_plan_auto_injects_infrastructure_metadata(tmp_path: Path) -> None
             assert item.updatedAt.endswith("Z"), item.updatedAt
             assert item.origin == f"ingest:{slug}", item.origin
             assert item.status == "active", item.status
+
+
+def test_apply_plan_does_not_embed_pages(tmp_path: Path) -> None:
+    """``apply_plan`` is a pure filesystem writer -- it does NOT embed into vec.sqlite.
+
+    Embedding is the orchestrator's job, invoked via ``embed_pages_after_ingest``
+    after ``apply_plan`` returns.
+    """
+    workspace = Workspace.at(tmp_path)
+    workspace.init_empty("Test")
+    slug = "pure-ffffffff"
+    plan = IngestPlan(
+        paper=_paper_page(slug).model_copy(update={"slug": slug}),
+        concepts=[],
+        distillation=_distillation(slug),
+        log_subject="Purity test",
+    )
+    touched = apply_plan(workspace, plan, _source(slug))
+    # No vec.sqlite entry in touched -- embedding happens outside apply_plan.
+    assert "state/vec.sqlite" not in touched
+
+
+def test_embed_pages_after_ingest_degrades_gracefully(tmp_path: Path) -> None:
+    """``embed_pages_after_ingest`` never crashes even when sqlite-vec is missing."""
+    workspace = Workspace.at(tmp_path)
+    workspace.init_empty("Test")
+    slug = "embed-00000001"
+    plan = IngestPlan(
+        paper=_paper_page(slug).model_copy(update={"slug": slug}),
+        concepts=[],
+        distillation=_distillation(slug),
+        log_subject="Embed degrade test",
+    )
+    # Write the paper page so the embedder would have something to embed.
+    apply_plan(workspace, plan, _source(slug))
+
+    touched: list[str] = []
+    # This should NOT raise even though sqlite-vec is likely not installed
+    # in a unit-test environment.
+    embed_pages_after_ingest(workspace, plan, touched)
+    # Either vec.sqlite was appended (sqlite-vec available) or nothing happened
+    # (graceful degradation) -- both are acceptable outcomes.

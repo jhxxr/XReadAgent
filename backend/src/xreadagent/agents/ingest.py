@@ -27,6 +27,7 @@ Apply discipline (post-planner, pre-write):
 
 from __future__ import annotations
 
+import logging
 import sys
 import time
 from dataclasses import dataclass, field
@@ -61,6 +62,8 @@ from xreadagent.wiki.pages import (
     write_paper_page,
 )
 from xreadagent.wiki.workspace import Workspace
+
+_logger = logging.getLogger(__name__)
 
 PlannerMethod = Literal["auto", "tool", "json"]
 
@@ -228,6 +231,63 @@ def _ensure_source_refs(payload: DistillationPayload, source_id: str) -> None:
         for item in collection:
             if not item.sourceRefs:
                 item.sourceRefs = [SourceRef(sourceId=cleaned_id)]
+
+
+def embed_pages_after_ingest(
+    workspace: Workspace, plan: IngestPlan, touched: list[str]
+) -> None:
+    """Embed the newly written paper + concept pages into vec.sqlite.
+
+    Called by the orchestrator after ``apply_plan`` completes, NOT from inside
+    ``apply_plan`` itself (apply_plan is a pure file-system writer per spec).
+
+    Graceful degradation: if sqlite-vec or the embedding model are unavailable,
+    we log a warning and continue. The ingest pipeline is never blocked by
+    an embedding failure. Query archive pages are intentionally NOT embedded.
+    """
+    try:
+        from xreadagent.wiki.embedder import Embedder
+        from xreadagent.wiki.frontmatter_utils import read_page_content
+        from xreadagent.wiki.vector import VectorStore
+
+        store = VectorStore.open(workspace)
+        embedder = Embedder()
+    except ImportError:
+        # sqlite-vec or optimum not installed — skip embedding silently.
+        return
+    except Exception as exc:
+        _logger.warning("embedding setup failed: %s", exc)
+        return
+
+    pages_to_embed: list[tuple[str, str, str]] = []  # (slug, page_type, path)
+    paper_path = workspace.papers_dir / f"{plan.paper.slug}.md"
+    if paper_path.exists():
+        pages_to_embed.append((plan.paper.slug, "paper", str(paper_path)))
+    for concept in plan.concepts:
+        concept_path = workspace.concepts_dir / f"{concept.slug}.md"
+        if concept_path.exists():
+            pages_to_embed.append((concept.slug, "concept", str(concept_path)))
+
+    for slug, page_type, path_str in pages_to_embed:
+        try:
+            content = read_page_content(Path(path_str))
+            embedding = embedder.embed(content)
+            title = (
+                plan.paper.frontmatter.title
+                if page_type == "paper"
+                else next(
+                    (c.canonical_name for c in plan.concepts if c.slug == slug), slug
+                )
+            )
+            store.upsert(slug, page_type, content, embedding=embedding, title=title)
+            touched.append("state/vec.sqlite")
+        except Exception as exc:
+            _logger.warning("embedding failed for %s: %s", slug, exc)
+
+    try:
+        store.close()
+    except Exception:
+        pass
 
 
 def _utc_now_iso() -> str:

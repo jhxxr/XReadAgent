@@ -24,7 +24,7 @@ _MAX_RECENT_LOG_ENTRIES = 50
 
 
 def build_query_tools(workspace: Workspace) -> list[BaseTool]:
-    """Build the nine read-only tools the query agent uses."""
+    """Build the ten read-only tools the query agent uses."""
     base_tools = build_ingest_tools(workspace)
 
     @tool

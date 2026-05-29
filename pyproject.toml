@@ -37,6 +37,14 @@ dependencies = [
     # Pulls in transitively: pymupdf (AGPL), onnxruntime, huggingface_hub,
     # tenacity, hyperscan (x86-only). License compatibility tracked in NOTICE.
     "babeldoc==0.6.2",
+    # Phase 4: vector search (sqlite-vec + ONNX embeddings).
+    "sqlite-vec>=0.1.9",
+    # Embedding engine: optimum[onnxruntime] loads ONNX models without torch at
+    # runtime. The embedder module uses return_tensors="np" + numpy post-processing
+    # so torch is never imported. transformers may transitively pull torch as an
+    # install-time dep but our code never touches it.
+    "optimum[onnxruntime]>=1.20",
+    "transformers>=4.40",
 ]
 
 [project.optional-dependencies]
@@ -115,6 +123,13 @@ module = [
     "langgraph.*",
     "babeldoc",
     "babeldoc.*",
+    "sqlite_vec",
+    "optimum",
+    "optimum.*",
+    "transformers",
+    "transformers.*",
+    "torch",
+    "numpy",
 ]
 ignore_missing_imports = true
 
@@ -128,4 +143,5 @@ filterwarnings = [
 markers = [
     "mineru: requires the MinerU CLI installed (skipped by default)",
     "babeldoc: requires the BabelDOC engine + ~80MB model assets (skipped by default)",
+    "embeddings: requires the ONNX embedding model + sqlite-vec (skipped by default)",
 ]
