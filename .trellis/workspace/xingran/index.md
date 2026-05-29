@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 12
+- **Total Sessions**: 13
 - **Last Active**: 2026-05-29
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~429 | Active |
+| `journal-1.md` | ~462 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 13 | 2026-05-29 | E2E 集成测试与 CI/CD pipeline | `abc5a1c` | `main` |
 | 12 | 2026-05-29 | Phase 4C: macOS Electron packaging, code signing, entitlements | `09f2334`, `50acd40` | `main` |
 | 11 | 2026-05-29 | Phase 4A+4B: sqlite-vec semantic search + MCP protocol | `b17110c`, `2fb0196`, `6042f30` | `main` |
 | 10 | 2026-05-29 | PDF.js reader: virtual scroll, text layer, zoom, page nav, robustness | `afda48a`, `2f0c4cd`, `cf92ebe`, `605faa0` | `main` |

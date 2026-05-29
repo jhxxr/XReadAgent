@@ -427,3 +427,36 @@ Added macOS support to XReadAgent Electron client: universal binary (arm64+x64) 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 13: E2E 集成测试与 CI/CD pipeline
+
+**Date**: 2026-05-29
+**Task**: E2E 集成测试与 CI/CD pipeline
+**Branch**: `main`
+
+### Summary
+
+创建 GitHub Actions CI/CD pipeline（ci.yml + release.yml）和 E2E sidecar 生命周期测试。CI 覆盖三个包的 lint/typecheck/test/build，CD 在 tag v* push 时构建 Windows/macOS 安装包并上传 GitHub Releases。E2E 测试验证 sidecar spawn → SIDECAR_READY → healthz 完整链路，默认跳过，XREADAGENT_E2E=1 启用。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `abc5a1c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
