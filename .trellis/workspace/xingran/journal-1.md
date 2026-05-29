@@ -393,3 +393,37 @@ Implemented Phase 4A (sqlite-vec) and Phase 4B (MCP protocol). sqlite-vec: Vecto
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: Phase 4C: macOS Electron packaging, code signing, entitlements
+
+**Date**: 2026-05-29
+**Task**: Phase 4C: macOS Electron packaging, code signing, entitlements
+**Branch**: `main`
+
+### Summary
+
+Added macOS support to XReadAgent Electron client: universal binary (arm64+x64) DMG/ZIP build, hardened runtime + entitlements (JIT, unsigned executable memory, network), macOS tray template icon (dark/light mode adaptive), fixed critical bundle-python.mjs macOS naming bug (aarch64-apple-darwin not macos-aarch64), ICNS icon generation, pack.mjs --mac flag. 64 electron tests passing.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `09f2334` | (see git log) |
+| `50acd40` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
