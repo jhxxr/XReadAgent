@@ -51,8 +51,6 @@ jobs:
 
       - name: Build installer
         run: cd electron && pnpm dist
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -103,7 +101,6 @@ jobs:
         env:
           # Skip code signing — build unsigned.
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7

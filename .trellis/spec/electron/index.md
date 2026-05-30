@@ -108,6 +108,47 @@ electron/
   contents into `resources/python/`. Do not assume an outer `cpython-.../python/` directory
   or use a fixed `--strip-components=2`.
 
+### Release Packaging & Publish Contract
+
+`electron-builder` packages the app; it must **not** publish. The GitHub Release is created by
+the dedicated `release` job (`softprops/action-gh-release`), and the app ships **no auto-updater**
+(no `electron-updater` dependency, no `autoUpdater` usage in `electron/src/`).
+
+- **`electron/electron-builder.yml` MUST keep `publish: null`** (top-level key). This disables
+  electron-builder's publish auto-detection and skips the unused `app-update.yml` generation.
+- **The Release workflow build steps (`pnpm dist`, `pnpm dist:mac`) MUST NOT pass `GH_TOKEN` /
+  `GITHUB_TOKEN`** as env. That token is what triggers electron-builder's GitHub-publish mode.
+- The `release` job keeps using the default `GITHUB_TOKEN` — only the *build* steps must stay clean.
+
+> **Gotcha — "Cannot detect repository by .git/config".** If `GH_TOKEN` is present **and** publish
+> is not disabled, electron-builder enters GitHub-publish mode during `afterPack`, tries to generate
+> `app-update.yml`, and must resolve the repo owner/name. It checks `electron/package.json`'s
+> `repository` field (absent) then parses `.git/config` from the `electron/` subdir (fails in this
+> monorepo layout) and crashes the build with `⨯ Cannot detect repository by .git/config`. It would
+> also risk double-publishing against the `release` job. This caused repeated Release CI failures at
+> the **Build installer** step for v0.0.2 on both Windows and macOS.
+
+**Wrong** (build crashes in `afterPack`):
+```yaml
+# release.yml — build step
+- name: Build installer
+  run: cd electron && pnpm dist
+  env:
+    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # ✗ triggers publish mode
+# electron-builder.yml has no `publish:` key  → auto-detects github → repo lookup fails
+```
+
+**Correct**:
+```yaml
+# release.yml — build step: no GH_TOKEN
+- name: Build installer
+  run: cd electron && pnpm dist
+```
+```yaml
+# electron-builder.yml
+publish: null   # ✓ no publish, no app-update.yml, no repo detection
+```
+
 ### IPC Bridge Contract
 
 The preload script exposes `window.electronAPI` with these methods:

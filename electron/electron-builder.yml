@@ -15,6 +15,14 @@ appId: com.xreadagent.desktop
 productName: XReadAgent
 copyright: Copyright (c) 2025 XReadAgent contributors (AGPL-3.0-or-later)
 
+# No auto-updater is used (electron-updater is not a dependency), and the GitHub
+# Release is published by the dedicated `release` workflow job, not by electron-builder.
+# Setting publish to null disables electron-builder's publish auto-detection — without
+# this, the presence of GH_TOKEN makes it try to generate app-update.yml and resolve the
+# repo from .git/config, which fails in this monorepo subdir build.
+# See https://electron.build/configuration/publish
+publish: null
+
 directories:
   output: release
   buildResources: build
