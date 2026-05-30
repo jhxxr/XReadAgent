@@ -100,6 +100,13 @@ electron/
   `PYTHONPATH=resources/backend`.
 - When installing into the bundled venv with `uv pip install --python`, pass the venv's
   Python executable (`Scripts/python.exe` on Windows, `bin/python` on POSIX), not pip.
+- python-build-standalone release assets use target-triple platform suffixes and tarballs:
+  Windows x64 is `x86_64-pc-windows-msvc-install_only.tar.gz`, macOS x64 is
+  `x86_64-apple-darwin-install_only.tar.gz`, and macOS arm64 is
+  `aarch64-apple-darwin-install_only.tar.gz`. The install-only tarballs expose a top-level
+  `python/` directory; extract to a temporary directory, locate `python/`, and move its
+  contents into `resources/python/`. Do not assume an outer `cpython-.../python/` directory
+  or use a fixed `--strip-components=2`.
 
 ### IPC Bridge Contract
 

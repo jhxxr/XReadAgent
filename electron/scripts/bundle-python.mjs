@@ -41,27 +41,42 @@ const PYTHON_VERSION = "3.12.8";
 const PYTHON_RELEASE_TAG = "20241219";
 const PLATFORM = os.platform();
 const ARCH = os.arch();
+const args = process.argv.slice(2);
+
+function readOptionValue(name) {
+  const index = args.indexOf(name);
+  if (index === -1) {
+    return null;
+  }
+
+  const value = args[index + 1];
+  if (!value || value.startsWith("--")) {
+    console.error(`[bundle-python] ${name} requires a value.`);
+    process.exit(1);
+  }
+  return value;
+}
 
 /**
  * Determine the python-build-standalone archive URL for the current platform.
  */
-function getPythonArchiveUrl() {
+function getPythonArchiveInfo(platform = PLATFORM, arch = ARCH) {
   // Map Node arch to python-build-standalone arch names.
-  let psArch = ARCH;
-  if (PLATFORM === "win32") {
-    psArch = ARCH === "x64" ? "x86_64" : ARCH;
-  } else if (PLATFORM === "darwin") {
-    psArch = ARCH === "arm64" ? "aarch64" : "x86_64";
+  let psArch = arch;
+  if (platform === "win32") {
+    psArch = arch === "x64" ? "x86_64" : arch;
+  } else if (platform === "darwin") {
+    psArch = arch === "arm64" ? "aarch64" : "x86_64";
   } else {
-    psArch = ARCH === "arm64" ? "aarch64" : "x86_64";
+    psArch = arch === "arm64" ? "aarch64" : "x86_64";
   }
 
   let ext = "tar.gz";
   let platformSuffix = "unknown";
-  if (PLATFORM === "win32") {
-    ext = "zip";
-    platformSuffix = `windows-${psArch}`;
-  } else if (PLATFORM === "darwin") {
+  if (platform === "win32") {
+    // python-build-standalone uses Rust-style target triples for Windows.
+    platformSuffix = `${psArch}-pc-windows-msvc`;
+  } else if (platform === "darwin") {
     // python-build-standalone uses "{arch}-apple-darwin" for macOS,
     // NOT "macos-{arch}". See: https://github.com/astral-sh/python-build-standalone
     platformSuffix = `${psArch}-apple-darwin`;
@@ -71,7 +86,18 @@ function getPythonArchiveUrl() {
 
   const filename = `cpython-${PYTHON_VERSION}+${PYTHON_RELEASE_TAG}-${platformSuffix}-install_only.${ext}`;
   const url = `https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_RELEASE_TAG}/${filename}`;
-  return { url, filename };
+  const pythonExecutableRelativePath = platform === "win32"
+    ? path.join("python.exe")
+    : path.join("bin", "python3");
+
+  return {
+    url,
+    filename,
+    platform,
+    arch,
+    platformSuffix,
+    pythonExecutableRelativePath,
+  };
 }
 
 function run(cmd, opts = {}) {
@@ -93,7 +119,70 @@ function checkCommand(cmd) {
   }
 }
 
+function findPythonSourceDir(searchRoot) {
+  const stack = [searchRoot];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    const entries = fs.readdirSync(current, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
+      const fullPath = path.join(current, entry.name);
+      if (entry.name.toLowerCase() === "python") {
+        return fullPath;
+      }
+
+      stack.push(fullPath);
+    }
+  }
+
+  return null;
+}
+
+function movePythonContents(pythonSrcDir, destinationDir) {
+  const entries = fs.readdirSync(pythonSrcDir);
+  for (const entry of entries) {
+    const src = path.join(pythonSrcDir, entry);
+    const dest = path.join(destinationDir, entry);
+    fs.renameSync(src, dest);
+  }
+}
+
+async function checkArchiveUrl(url) {
+  const response = await fetch(url, { method: "HEAD", redirect: "follow" });
+  if (!response.ok) {
+    console.error(`[bundle-python] Archive URL check failed: HTTP ${response.status} ${response.statusText}`);
+    console.error(`[bundle-python] ${url}`);
+    process.exit(1);
+  }
+
+  console.log(`[bundle-python] Archive URL OK: ${url}`);
+}
+
 async function main() {
+  const targetPlatform = readOptionValue("--platform") ?? PLATFORM;
+  const targetArch = readOptionValue("--arch") ?? ARCH;
+  const archiveInfo = getPythonArchiveInfo(targetPlatform, targetArch);
+
+  if (args.includes("--print-python-archive")) {
+    console.log(JSON.stringify(archiveInfo, null, 2));
+    return;
+  }
+
+  if (args.includes("--check-python-archive-url")) {
+    await checkArchiveUrl(archiveInfo.url);
+    return;
+  }
+
+  if (targetPlatform !== PLATFORM || targetArch !== ARCH) {
+    console.error("[bundle-python] --platform/--arch can only be used with metadata check flags.");
+    process.exit(1);
+  }
+
   console.log("[bundle-python] XReadAgent Python bundler");
   console.log(`[bundle-python] Platform: ${PLATFORM} ${ARCH}`);
   console.log(`[bundle-python] Python version: ${PYTHON_VERSION}`);
@@ -120,7 +209,7 @@ async function main() {
   // ---------------------------------------------------------------------------
   console.log("\n[bundle-python] Step 1/4: Downloading python-build-standalone...");
 
-  const { url: archiveUrl, filename: archiveName } = getPythonArchiveUrl();
+  const { url: archiveUrl, filename: archiveName } = archiveInfo;
   const archivePath = path.join(resourcesDir, archiveName);
 
   if (fs.existsSync(pythonDir) && fs.readdirSync(pythonDir).length > 0) {
@@ -131,76 +220,38 @@ async function main() {
 
     if (!fs.existsSync(archivePath)) {
       // Use curl for download (available on Windows 10+, macOS, Linux).
-      run(`curl -L -o "${archivePath}" "${archiveUrl}"`);
+      run(`curl -fL -o "${archivePath}" "${archiveUrl}"`);
     } else {
       console.log(`[bundle-python] Archive already downloaded: ${archivePath}`);
     }
 
-    // Extract the archive.
-    // python-build-standalone install_only archives have this layout:
-    //   cpython-3.12.8+20241219-<platform>-install_only/python/
-    //     (Windows) python.exe, Lib/, ...
-    //     (Linux/macOS) bin/python3, lib/python3.12/, ...
-    // We need --strip-components=2 (or equivalent) to move the contents of
-    // the inner "python/" directory directly into resources/python/.
+    // Extract the archive. python-build-standalone install_only archives expose
+    // a python/ directory whose contents must become resources/python/.
     console.log("[bundle-python] Extracting...");
     fs.mkdirSync(pythonDir, { recursive: true });
 
-    if (archiveName.endsWith(".zip")) {
-      // Windows: use PowerShell to extract zip.
-      const absPythonDir = path.resolve(pythonDir);
-      // Extract to a temp dir first, then locate and move the inner python/ contents.
-      const tmpDir = path.join(resourcesDir, "_python_extract_tmp");
-      if (fs.existsSync(tmpDir)) {
-        fs.rmSync(tmpDir, { recursive: true, force: true });
-      }
-      fs.mkdirSync(tmpDir, { recursive: true });
-
-      run(`powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${tmpDir}' -Force"`);
-
-      // The zip extracts to: tmpDir/cpython-...-install_only/python/
-      // We need to find the "python/" subdirectory and move its contents.
-      const extracted = fs.readdirSync(tmpDir);
-      let pythonSrcDir = null;
-
-      for (const entry of extracted) {
-        const entryPath = path.join(tmpDir, entry);
-        if (fs.statSync(entryPath).isDirectory()) {
-          // Look for the "python" subdirectory inside the release directory.
-          const innerEntries = fs.readdirSync(entryPath);
-          const pythonSub = innerEntries.find((e) =>
-            e.toLowerCase() === "python" &&
-            fs.statSync(path.join(entryPath, e)).isDirectory(),
-          );
-          if (pythonSub) {
-            pythonSrcDir = path.join(entryPath, pythonSub);
-            break;
-          }
-        }
-      }
-
-      if (pythonSrcDir) {
-        // Move contents of python/ to resources/python/
-        const entries = fs.readdirSync(pythonSrcDir);
-        for (const entry of entries) {
-          const src = path.join(pythonSrcDir, entry);
-          const dest = path.join(absPythonDir, entry);
-          fs.renameSync(src, dest);
-        }
-      } else {
-        console.error("[bundle-python] Could not find 'python/' directory inside the archive.");
-        console.error("[bundle-python] Archive structure may have changed. Please check and update this script.");
-        process.exit(1);
-      }
-
-      // Clean up temp dir.
+    const tmpDir = path.join(resourcesDir, "_python_extract_tmp");
+    if (fs.existsSync(tmpDir)) {
       fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    if (archiveName.endsWith(".zip")) {
+      run(`powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${tmpDir}' -Force"`);
     } else {
-      // tar.gz on macOS/Linux.
-      // --strip-components=2 removes: cpython-...-install_only/ and python/
-      run(`tar -xzf "${archivePath}" -C "${pythonDir}" --strip-components=2`);
+      run(`tar -xzf "${archivePath}" -C "${tmpDir}"`);
     }
 
+    const pythonSrcDir = findPythonSourceDir(tmpDir);
+    if (pythonSrcDir) {
+      movePythonContents(pythonSrcDir, path.resolve(pythonDir));
+    } else {
+      console.error("[bundle-python] Could not find 'python/' directory inside the archive.");
+      console.error("[bundle-python] Archive structure may have changed. Please check and update this script.");
+      process.exit(1);
+    }
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
     console.log("[bundle-python] Python extraction complete.");
   }
 
