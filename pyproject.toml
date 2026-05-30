@@ -1,6 +1,6 @@
 [project]
 name = "xreadagent"
-version = "0.0.1"
+version = "0.0.2"
 description = "Scientific research agent with LLM-Wiki memory and layout-preserving PDF translation."
 readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }
