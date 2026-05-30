@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 16
-- **Last Active**: 2026-05-29
+- **Total Sessions**: 17
+- **Last Active**: 2026-05-30
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~561 | Active |
+| `journal-1.md` | ~594 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 17 | 2026-05-30 | Fix release Python bundling | `eeb58c5` | `main` |
 | 16 | 2026-05-29 | Pin pnpm for Node 20 CI | `cf2883e` | `main` |
 | 15 | 2026-05-29 | Fix CI dependency and test selection | `6f4fdba` | `main` |
 | 14 | 2026-05-29 | Fix CI pnpm setup | `4bfb794` | `main` |

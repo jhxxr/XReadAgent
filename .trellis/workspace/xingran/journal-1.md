@@ -559,3 +559,36 @@ Investigated GitHub Actions run 26631668444 and fixed setup-node failures by pin
 ### Next Steps
 
 - None - task complete
+
+
+## Session 17: Fix release Python bundling
+
+**Date**: 2026-05-30
+**Task**: Fix release Python bundling
+**Branch**: `main`
+
+### Summary
+
+Fixed Release workflow Python bundling by correcting python-build-standalone asset naming, making tarball extraction layout-aware, adding metadata regression tests, and documenting the Electron bundle contract.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `eeb58c5` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
