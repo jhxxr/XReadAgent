@@ -592,3 +592,39 @@ Fixed Release workflow Python bundling by correcting python-build-standalone ass
 ### Next Steps
 
 - None - task complete
+
+
+## Session 18: Release v0.0.2 and v0.0.3
+
+**Date**: 2026-05-31
+**Task**: Release v0.0.2 and v0.0.3
+**Branch**: `main`
+
+### Summary
+
+Published v0.0.2 release with version bumps. Fixed electron-builder publish issue. Released v0.0.3 with memory refactor (reverted embedding tier to pure LLM-Wiki grep) and Windows-only CI configuration.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ba4e324` | (see git log) |
+| `d2c5f96` | (see git log) |
+| `1ea263e` | (see git log) |
+| `717dea4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
