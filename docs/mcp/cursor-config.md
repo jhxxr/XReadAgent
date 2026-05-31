@@ -44,7 +44,7 @@ Or use the `xreadagent` CLI directly:
 | `list_papers` | List all ingested papers |
 | `list_concepts` | List all concepts |
 | `browse_wiki` | Read a wiki page by path |
-| `semantic_search` | Search wiki pages using hybrid vector + FTS5 |
+| `semantic_search` | Keyword (grep) search across wiki pages |
 
 ## Available Resources
 

@@ -23,7 +23,6 @@ from xreadagent.agents.ingest import (
     IngestAgent,
     IngestResult,
     apply_plan,
-    embed_pages_after_ingest,
 )
 from xreadagent.agents.ingest_schema import (
     IngestConceptTouch,
@@ -69,7 +68,6 @@ __all__ = [
     "apply_crystallize",
     "apply_plan",
     "build_ingest_tools",
-    "embed_pages_after_ingest",
     "build_query_tools",
     "ingest_source",
 ]

@@ -15,7 +15,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from xreadagent.agents.ingest import IngestAgent, IngestResult, embed_pages_after_ingest
+from xreadagent.agents.ingest import IngestAgent, IngestResult
 from xreadagent.pipeline.router import convert_source
 from xreadagent.wiki.workspace import Workspace
 
@@ -78,11 +78,6 @@ async def ingest_source(
 
     start = time.monotonic()
     result = await agent.ingest(source, convert_result.output_path)
-
-    # Embed new/modified pages into vec.sqlite. Runs after apply_plan so the
-    # pure-filesystem-writer contract of apply_plan is preserved. Degrades
-    # gracefully -- embedding failure is logged but never blocks the pipeline.
-    embed_pages_after_ingest(workspace, result.plan, result.files_touched)
 
     # Preserve the per-call duration; agent.ingest already populates it but
     # callers might want the wall-clock from this orchestrator (which includes

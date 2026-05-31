@@ -18,7 +18,6 @@ from xreadagent.cli import (
     init_cmd,
     mcp_cmd,
     query_cmd,
-    reindex_cmd,
     show_cmd,
     translate_cmd,
 )
@@ -43,7 +42,6 @@ def build_parser() -> argparse.ArgumentParser:
     init_cmd.add_parser(subparsers)
     ingest_cmd.add_parser(subparsers)
     query_cmd.add_parser(subparsers)
-    reindex_cmd.add_parser(subparsers)
     show_cmd.add_parser(subparsers)
     translate_cmd.add_parser(subparsers)
     mcp_cmd.add_parser(subparsers)

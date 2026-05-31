@@ -326,27 +326,17 @@ def register_tools(mcp: FastMCP) -> None:
         workspace_path: str | None = None,
         top_k: int = 10,
     ) -> list[dict[str, Any]]:
-        """Search wiki pages using hybrid vector + FTS5 + RRF.
+        """Search wiki pages by keyword (case-insensitive grep).
 
-        Returns a list of search results with slug, title, page type,
-        score, and a short snippet.
+        Scans paper and concept pages, scoring each by the number of times
+        the query appears, and returns the top matches. Each result has
+        slug, title, page type, score, and a short snippet.
         """
         workspace = resolve_workspace(workspace_path)
 
-        from xreadagent.wiki.search import semantic_search as _semantic_search
+        from xreadagent.wiki.keyword_search import search_wiki_pages
 
-        results = _semantic_search(query, workspace, top_k=top_k)
-        return [
-            {
-                "slug": r.slug,
-                "title": r.title,
-                "page_type": r.page_type,
-                "score": r.score,
-                "source": r.source,
-                "snippet": r.snippet,
-            }
-            for r in results
-        ]
+        return search_wiki_pages(workspace, query, top_k=top_k)
 
 
 __all__ = ["register_tools"]

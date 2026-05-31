@@ -163,10 +163,35 @@ class TestBrowseWikiTool:
 
 class TestSemanticSearchTool:
     def test_returns_empty_for_empty_workspace(self, workspace: Workspace) -> None:
-        from xreadagent.wiki.search import semantic_search
+        from xreadagent.wiki.keyword_search import search_wiki_pages
 
-        result = semantic_search("test query", workspace, top_k=5)
+        result = search_wiki_pages(workspace, "test query", top_k=5)
         assert result == []
+
+    def test_returns_matching_pages_by_keyword(self, workspace: Workspace) -> None:
+        from xreadagent.schemas.wiki_pages import PaperFrontmatter
+        from xreadagent.wiki.keyword_search import search_wiki_pages
+        from xreadagent.wiki.pages import write_paper_page
+
+        write_paper_page(
+            workspace,
+            "transformer-paper",
+            PaperFrontmatter(
+                title="Attention Is All You Need",
+                source="raw/x.pdf",
+                source_hash="deadbeef",
+            ),
+            {"Background": "The transformer uses self-attention everywhere."},
+        )
+
+        result = search_wiki_pages(workspace, "ATTENTION", top_k=5)
+        assert len(result) == 1
+        hit = result[0]
+        assert hit["slug"] == "transformer-paper"
+        assert hit["title"] == "Attention Is All You Need"
+        assert hit["page_type"] == "paper"
+        assert hit["score"] >= 1.0
+        assert "self-attention" in hit["snippet"]
 
 
 # ---------------------------------------------------------------------------

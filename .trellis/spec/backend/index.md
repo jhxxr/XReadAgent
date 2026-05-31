@@ -45,7 +45,7 @@ These are the rules a sub-agent must follow without re-litigating:
 3. **camelCase for state JSON schemas** (Source/Entity/Claim/Relation/Task/DistillationPayload); **snake_case for agent plans + frontmatter**.
 4. **All state writes through `wiki/atomic.py`** — never `path.write_text` directly on `state/` or `wiki/`.
 5. **No LangChain imports outside `xreadagent.agents.*`** — wiki + pipeline stay framework-agnostic.
-6. **No vector tier in v1** — no `embed`/`vector`/`sqlite-vec`/`faiss`/`chroma` in `backend/src/`. Phase 4 concern.
+6. **No vector/embedding tier — memory is a pure LLM-Wiki.** No `embed`/`embedding`/`vector`/`sqlite-vec`/`optimum`/`transformers`/`torch`/`faiss`/`chroma` in `backend/src/` **or** in `pyproject.toml` deps. Retrieval = the agent reading `index.md` + pages + `search_wiki` (grep, via `wiki/keyword_search.py`). A sqlite-vec semantic-search tier was added in Phase 4A (`b17110c`) and **removed in v0.0.3** as a design correction: the memory model is the Karpathy LLM-Wiki (markdown pages + index, LLM-driven retrieval), **not** embeddings — and the embedding stack (torch/optimum/transformers) also bloated the desktop bundle and broke the Release build. Do not reintroduce it. The MCP `semantic_search` tool name is kept for interface stability but is now grep-backed.
 7. **No auto-promote from `queries/`** — `/crystallize` is the only path. Verified by `test_query_isolation`.
 8. **All agent classes take an injectable `Planner` Protocol** for tests.
 9. **Idempotent `contentHash` short-circuit** at the router; cache-hit short-circuit at the orchestrator.
@@ -64,7 +64,7 @@ These are the rules a sub-agent must follow without re-litigating:
 | Phase 2A (BabelDOC translation backend + API + CLI) | Complete | (this dispatch) |
 | Phase 2B (PDF.js reader + Translate dialog) | Next |  |
 | Phase 3 (Electron wrapper + native integrations + packaging) | Complete | `165947c..676fd84` |
-| Phase 4A (sqlite-vec semantic search) | Complete | `b17110c` |
+| Phase 4A (sqlite-vec semantic search) | Reverted in v0.0.3 — replaced by grep-based LLM-Wiki retrieval (see Hard Rule 6) | `b17110c` (added) |
 | Phase 4B (MCP protocol integration) | Complete | `2fb0196` |
 | Phase 4C (macOS Electron packaging) | Complete | `09f2334` |
 

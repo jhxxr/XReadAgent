@@ -207,10 +207,6 @@ class Workspace:
     def conversation_log_path(self) -> Path:
         return self.state_dir / "conversation-log.jsonl"
 
-    @property
-    def vec_sqlite_path(self) -> Path:
-        return self.state_dir / "vec.sqlite"
-
 
 def _write_if_missing(path: Path, content: str) -> None:
     if path.exists():

@@ -1,6 +1,6 @@
 [project]
 name = "xreadagent"
-version = "0.0.2"
+version = "0.0.3"
 description = "Scientific research agent with LLM-Wiki memory and layout-preserving PDF translation."
 readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }
@@ -37,14 +37,6 @@ dependencies = [
     # Pulls in transitively: pymupdf (AGPL), onnxruntime, huggingface_hub,
     # tenacity, hyperscan (x86-only). License compatibility tracked in NOTICE.
     "babeldoc==0.6.2",
-    # Phase 4: vector search (sqlite-vec + ONNX embeddings).
-    "sqlite-vec>=0.1.9",
-    # Embedding engine: optimum[onnxruntime] loads ONNX models without torch at
-    # runtime. The embedder module uses return_tensors="np" + numpy post-processing
-    # so torch is never imported. transformers may transitively pull torch as an
-    # install-time dep but our code never touches it.
-    "optimum[onnxruntime]>=1.20",
-    "transformers>=4.40",
     # MCP (Model Context Protocol) server SDK. Exposes XReadAgent as an
     # MCP server so external AI tools (Claude Desktop, Cursor, etc.) can
     # call ingest/query/translate/browse as tools. Zero dependency conflicts
@@ -128,12 +120,6 @@ module = [
     "langgraph.*",
     "babeldoc",
     "babeldoc.*",
-    "sqlite_vec",
-    "optimum",
-    "optimum.*",
-    "transformers",
-    "transformers.*",
-    "torch",
     "numpy",
     "mcp",
     "mcp.*",
@@ -141,7 +127,7 @@ module = [
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-addopts = "-m 'not babeldoc and not mineru and not embeddings'"
+addopts = "-m 'not babeldoc and not mineru'"
 testpaths = ["backend/tests"]
 pythonpath = ["backend/src"]
 asyncio_mode = "auto"
@@ -151,5 +137,4 @@ filterwarnings = [
 markers = [
     "mineru: requires the MinerU CLI installed (skipped by default)",
     "babeldoc: requires the BabelDOC engine + ~80MB model assets (skipped by default)",
-    "embeddings: requires the ONNX embedding model + sqlite-vec (skipped by default)",
 ]
