@@ -62,6 +62,11 @@ jobs:
   # ── Build macOS installer ───────────────────────────────────────────
   build-macos:
     name: Build (macOS)
+    # Temporarily disabled: electron-builder `universal` mac target is incompatible
+    # with the single-arch (arm64) bundled Python — @electron/universal fails with a
+    # mach-o file-count mismatch. Re-enable after switching mac to arm64-only or
+    # bundling both arches. Tracked separately.
+    if: false
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
@@ -115,7 +120,7 @@ jobs:
   release:
     name: Publish Release
     runs-on: ubuntu-latest
-    needs: [build-windows, build-macos]
+    needs: [build-windows]
     steps:
       - uses: actions/checkout@v6
 

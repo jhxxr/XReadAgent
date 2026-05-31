@@ -149,6 +149,14 @@ the dedicated `release` job (`softprops/action-gh-release`), and the app ships *
 publish: null   # ✓ no publish, no app-update.yml, no repo detection
 ```
 
+> **Gotcha — macOS `universal` target vs. single-arch bundled Python.** `electron-builder.yml`
+> targets a `universal` mac build (`mac.target.arch: universal`), but `bundle-python.mjs` bundles a
+> single-arch (arm64) Python. `@electron/universal` then fails merging the arm64 and x64 app builds
+> with "the number of mach-o files is not the same between the arm64 and x64 builds" (mach-o file
+> count mismatch). Fix options: set the mac target to `arm64`-only, or bundle both arm64+x64 Python
+> and `lipo` them into universal binaries. Until this is resolved, the `build-macos` job is
+> `if: false` in `release.yml` and the Release workflow publishes **Windows-only**.
+
 ### IPC Bridge Contract
 
 The preload script exposes `window.electronAPI` with these methods:
