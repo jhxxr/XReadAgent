@@ -628,3 +628,36 @@ Published v0.0.2 release with version bumps. Fixed electron-builder publish issu
 ### Next Steps
 
 - None - task complete
+
+
+## Session 19: fix sidecar prod deps: add venv site-packages to PYTHONPATH
+
+**Date**: 2026-06-01
+**Task**: fix sidecar prod deps: add venv site-packages to PYTHONPATH
+**Branch**: `main`
+
+### Summary
+
+Diagnosed and fixed packaged XReadAgent crash 'Sidecar exited before becoming ready (code=1)'. Root cause: SidecarManager spawned the bundled base Python interpreter but only set VIRTUAL_ENV, which the base interpreter does not honor for sys.path — the venv's site-packages (pydantic, fastapi, uvicorn) was never searched. The bundled venv is also non-relocatable (pyvenv.cfg home is the CI build-machine path), so launching the venv's python.exe was not a fallback. Fix: extracted env construction into buildSidecarEnv() in electron/src/sidecar.ts and place the venv's site-packages on PYTHONPATH alongside the backend source. Added 7 unit tests in electron/tests/sidecar.test.ts (including regression guard 'production PYTHONPATH must contain site-packages'). Updated .trellis/spec/electron/index.md to reflect the corrected contract. End-to-end verified by re-packing the installed bundle's app.asar (since local NSIS build is blocked by git-bash tar + missing symlink privilege) with the fixed main.js: sidecar port=54723, /healthz=200, app reaches main window. Original app.asar backed up to G:\software\XReadAgent\resources\app.asar.20260601-151015.bak. Discovered separate 'Not Found' issue (sidecar has no static mount for frontend/dist, so Electron loadURL / receives FastAPI 404 JSON) — created follow-up task 06-01-fix-sidecar-serve-frontend-spa-and-remove-404-not-found-at (planning).
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `53f80a2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
