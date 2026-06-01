@@ -8,9 +8,11 @@
  * included here.
  */
 import { describe, it, expect } from "vitest";
+import * as fs from "node:fs";
+import * as os from "node:os";
 import path from "node:path";
 
-import { SIDECAR_READY_RE, resolvePythonPath, resolveSidecarPaths, SidecarManager } from "../src/sidecar";
+import { SIDECAR_READY_RE, resolvePythonPath, resolveSidecarPaths, SidecarManager, buildSidecarEnv, venvSitePackages } from "../src/sidecar";
 import type { SidecarRestartInfo } from "../src/sidecar";
 
 // ---------------------------------------------------------------------------
@@ -173,6 +175,92 @@ describe("resolveSidecarPaths", () => {
     const paths = resolveSidecarPaths(mockApp, "/custom/resources");
     expect(paths.venvPath).toBe(path.join("/custom/resources", "python-venv"));
     expect(paths.backendPath).toBe(path.join("/custom/resources", "backend"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// venvSitePackages
+// ---------------------------------------------------------------------------
+
+describe("venvSitePackages", () => {
+  it("returns Lib/site-packages on Windows", () => {
+    const result = venvSitePackages("/app/resources/python-venv", "win32");
+    expect(result).toBe(path.join("/app/resources/python-venv", "Lib", "site-packages"));
+  });
+
+  it("resolves the versioned lib dir on POSIX", () => {
+    const venv = fs.mkdtempSync(path.join(os.tmpdir(), "xread-venv-"));
+    try {
+      fs.mkdirSync(path.join(venv, "lib", "python3.12", "site-packages"), { recursive: true });
+      const result = venvSitePackages(venv, "linux");
+      expect(result).toBe(path.join(venv, "lib", "python3.12", "site-packages"));
+    } finally {
+      fs.rmSync(venv, { recursive: true, force: true });
+    }
+  });
+
+  it("returns null on POSIX when the lib dir is missing", () => {
+    const result = venvSitePackages(path.join(os.tmpdir(), "xread-nonexistent-venv-xyz"), "linux");
+    expect(result).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildSidecarEnv
+// ---------------------------------------------------------------------------
+
+describe("buildSidecarEnv", () => {
+  it("puts backend AND venv site-packages on PYTHONPATH in production (Windows)", () => {
+    const venvPath = "/app/resources/python-venv";
+    const backendPath = "/app/resources/backend";
+    const env = buildSidecarEnv(
+      { pythonPath: "py.exe", venvPath, backendPath },
+      "win32",
+      {}, // empty base env → deterministic
+    );
+
+    const sitePackages = path.join(venvPath, "Lib", "site-packages");
+    // Regression guard: site-packages MUST be on PYTHONPATH (the original
+    // ModuleNotFoundError: No module named 'pydantic' bug).
+    expect(env.PYTHONPATH).toContain(sitePackages);
+    expect(env.PYTHONPATH).toBe([backendPath, sitePackages].join(path.delimiter));
+    expect(env.VIRTUAL_ENV).toBe(venvPath);
+    expect(env.PYTHONUNBUFFERED).toBe("1");
+    expect(env.PATH).toContain(path.join(venvPath, "Scripts"));
+  });
+
+  it("does not inject PYTHONPATH or VIRTUAL_ENV in development mode", () => {
+    const env = buildSidecarEnv(
+      { pythonPath: "/proj/.venv/Scripts/python.exe" }, // no venvPath/backendPath
+      "win32",
+      {},
+    );
+    expect(env.PYTHONPATH).toBeUndefined();
+    expect(env.VIRTUAL_ENV).toBeUndefined();
+    expect(env.PYTHONUNBUFFERED).toBe("1");
+  });
+
+  it("preserves an inherited PYTHONPATH after the injected entries", () => {
+    const venvPath = "/app/resources/python-venv";
+    const backendPath = "/app/resources/backend";
+    const env = buildSidecarEnv(
+      { pythonPath: "py.exe", venvPath, backendPath },
+      "win32",
+      { PYTHONPATH: "/pre/existing" },
+    );
+    const parts = (env.PYTHONPATH ?? "").split(path.delimiter);
+    expect(parts[0]).toBe(backendPath);
+    expect(parts).toContain(path.join(venvPath, "Lib", "site-packages"));
+    expect(parts[parts.length - 1]).toBe("/pre/existing");
+  });
+
+  it("lets caller-provided env overrides take precedence", () => {
+    const env = buildSidecarEnv(
+      { pythonPath: "py.exe", venvPath: "/v", backendPath: "/b", env: { PYTHONPATH: "override" } },
+      "win32",
+      {},
+    );
+    expect(env.PYTHONPATH).toBe("override");
   });
 });
 

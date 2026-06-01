@@ -97,7 +97,15 @@ electron/
   `[tool.hatch.build.targets.wheel] packages = ["backend/src/xreadagent"]`.
 - Runtime source is still copied from `backend/src/xreadagent` into
   `electron/resources/backend/xreadagent`; production sidecar startup relies on
-  `PYTHONPATH=resources/backend`.
+  `PYTHONPATH` containing **both** `resources/backend` (the `xreadagent` source) **and** the
+  bundled venv's `site-packages` (third-party deps: `resources/python-venv/Lib/site-packages`
+  on Windows, `resources/python-venv/lib/pythonX.Y/site-packages` on POSIX). The sidecar
+  launches the bundled **base** interpreter (`resources/python/python.exe`), which does **not**
+  honor `VIRTUAL_ENV` for module resolution — setting `VIRTUAL_ENV` alone leaves the venv's
+  deps unreachable and the sidecar exits `code=1` (`ModuleNotFoundError`). The bundled venv is
+  also non-relocatable (`pyvenv.cfg` `home` is the build-machine path), so launching the venv's
+  own `python.exe` is not an option. `SidecarManager`'s `buildSidecarEnv()` wires this
+  `PYTHONPATH` (backend first so packaged source wins over the wheel copy, then site-packages).
 - When installing into the bundled venv with `uv pip install --python`, pass the venv's
   Python executable (`Scripts/python.exe` on Windows, `bin/python` on POSIX), not pip.
 - python-build-standalone release assets use target-triple platform suffixes and tarballs:
@@ -199,7 +207,7 @@ The preload script exposes `window.electronAPI` with these methods:
 3. **SPDX header on every `.ts` and `.mjs` file** — `// SPDX-License-Identifier: AGPL-3.0-or-later`.
 4. **`SidecarManager` is the single source of truth** for sidecar state. Main process reads state from `sidecarManager.getStatus()`, never from ad-hoc variables.
 5. **Graceful shutdown order**: SIGTERM → wait 5s → force kill. On Windows: `taskkill /PID` (graceful) → wait → `taskkill /F /PID` (force).
-6. **Python path resolution**: dev mode uses `.venv/`, production uses `resources/python/`. Never hardcode paths — always use `resolveSidecarPaths()`.
+6. **Python path resolution**: dev mode uses `.venv/`, production uses `resources/python/`. Never hardcode paths — always use `resolveSidecarPaths()`. The sidecar env (incl. the production `PYTHONPATH` that must list backend **and** venv `site-packages`) is built by `buildSidecarEnv()` — `VIRTUAL_ENV` alone does not make the base interpreter find venv deps.
 7. **All renderer↔main communication goes through `ipcMain.handle` / `ipcRenderer.invoke`** (request-response) or `webContents.send` (push events). Never use `ipcMain.on` / `ipcRenderer.send` for request-response patterns.
 
 ---

@@ -8,6 +8,7 @@
  * platform-appropriate force-kill fallback.
  */
 import { spawn, type ChildProcess } from "node:child_process";
+import * as fs from "node:fs";
 import * as http from "node:http";
 import path from "node:path";
 
@@ -226,32 +227,9 @@ export class SidecarManager {
   private spawnProcess(): ChildProcess {
     const args = ["-m", "xreadagent.api", "--port", "0", ...(this.options.pythonArgs ?? [])];
 
-    // Build environment: start from process.env, then layer on production overrides.
-    const env: Record<string, string> = {
-      ...process.env as Record<string, string>,
-      PYTHONUNBUFFERED: "1",
-    };
-
-    // In production, the bundled Python needs to find:
-    // 1. The venv's site-packages (for installed dependencies like fastapi, etc.)
-    // 2. The backend source directory (for the xreadagent package itself)
-    if (this.options.venvPath) {
-      env.VIRTUAL_ENV = this.options.venvPath;
-      // Prepend the venv's Scripts/ or bin/ directory to PATH so the Python
-      // process can find venv-installed binaries if needed.
-      const venvBin = process.platform === "win32"
-        ? path.join(this.options.venvPath, "Scripts")
-        : path.join(this.options.venvPath, "bin");
-      env.PATH = `${venvBin}${path.delimiter}${env.PATH ?? ""}`;
-    }
-
-    if (this.options.backendPath) {
-      // PYTHONPATH ensures Python can import xreadagent from the bundled source.
-      env.PYTHONPATH = this.options.backendPath;
-    }
-
-    // Merge any caller-provided env overrides last (highest priority).
-    Object.assign(env, this.options.env ?? {});
+    // Build the environment (PYTHONPATH wiring, venv site-packages, etc.).
+    // Extracted into `buildSidecarEnv` so it can be unit-tested without spawning.
+    const env = buildSidecarEnv(this.options);
 
     const proc = spawn(this.options.pythonPath, args, {
       cwd: this.options.cwd,
@@ -439,6 +417,102 @@ export class SidecarManager {
       this.logBuffer.splice(0, this.logBuffer.length - MAX_LOG_LINES);
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Sidecar environment construction
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the venv's `site-packages` directory.
+ *
+ *   Windows: `<venv>/Lib/site-packages`
+ *   POSIX:   `<venv>/lib/pythonX.Y/site-packages`  (X.Y varies — resolved from disk)
+ *
+ * Returns `null` if it cannot be determined (POSIX dir not readable). Exported
+ * for unit testing.
+ */
+export function venvSitePackages(
+  venvPath: string,
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  if (platform === "win32") {
+    return path.join(venvPath, "Lib", "site-packages");
+  }
+  // POSIX layout uses a version-specific subdir (e.g. lib/python3.12). Resolve
+  // it from the filesystem so we don't hardcode the minor version.
+  const libDir = path.join(venvPath, "lib");
+  try {
+    const pyDir = fs.readdirSync(libDir).find((e) => /^python3\.\d+$/.test(e));
+    if (pyDir) {
+      return path.join(libDir, pyDir, "site-packages");
+    }
+  } catch {
+    // libDir missing/unreadable — fall through to null.
+  }
+  return null;
+}
+
+/**
+ * Build the environment for the spawned sidecar process.
+ *
+ * Critical for production: the bundled **base** interpreter
+ * (`resources/python/python.exe`) does NOT honor `VIRTUAL_ENV` when resolving
+ * `sys.path` — it only searches its own (empty) site-packages plus whatever is
+ * on `PYTHONPATH`. So the bundled venv's `site-packages` MUST be placed on
+ * `PYTHONPATH` explicitly, alongside the backend source; otherwise imports like
+ * `pydantic` fail and the sidecar exits with code=1 before becoming ready.
+ *
+ * PYTHONPATH order: backend source first (so the packaged `xreadagent` source
+ * takes precedence over the wheel copy installed into the venv), then the venv
+ * site-packages (third-party deps), then any inherited `PYTHONPATH`.
+ *
+ * Exported for unit testing. `platform`/`baseEnv` are injectable for tests.
+ */
+export function buildSidecarEnv(
+  options: SidecarOptions,
+  platform: NodeJS.Platform = process.platform,
+  baseEnv: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
+  const env: Record<string, string> = {
+    ...(baseEnv as Record<string, string>),
+    PYTHONUNBUFFERED: "1",
+  };
+
+  const pythonPathParts: string[] = [];
+  if (options.backendPath) {
+    pythonPathParts.push(options.backendPath);
+  }
+
+  if (options.venvPath) {
+    // Set VIRTUAL_ENV for tools/conventions that read it — note this alone does
+    // NOT affect the base interpreter's module resolution (hence PYTHONPATH below).
+    env.VIRTUAL_ENV = options.venvPath;
+    // Prepend the venv's Scripts/ (Windows) or bin/ (POSIX) to PATH so the
+    // process can find venv-installed binaries if needed.
+    const venvBin = platform === "win32"
+      ? path.join(options.venvPath, "Scripts")
+      : path.join(options.venvPath, "bin");
+    env.PATH = `${venvBin}${path.delimiter}${env.PATH ?? ""}`;
+
+    const sitePackages = venvSitePackages(options.venvPath, platform);
+    if (sitePackages) {
+      pythonPathParts.push(sitePackages);
+    }
+  }
+
+  // Preserve any inherited PYTHONPATH after our injected entries.
+  if (baseEnv.PYTHONPATH) {
+    pythonPathParts.push(baseEnv.PYTHONPATH);
+  }
+  if (pythonPathParts.length > 0) {
+    env.PYTHONPATH = pythonPathParts.join(path.delimiter);
+  }
+
+  // Merge any caller-provided env overrides last (highest priority).
+  Object.assign(env, options.env ?? {});
+
+  return env;
 }
 
 // ---------------------------------------------------------------------------
