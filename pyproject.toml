@@ -63,9 +63,6 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["backend/src/xreadagent"]
 
-[tool.hatch.build.targets.wheel.force-include]
-"backend/src/xreadagent/agents/prompts" = "xreadagent/agents/prompts"
-
 [tool.hatch.build.targets.sdist]
 include = ["backend/src", "README.md", "LICENSE", "NOTICE", "pyproject.toml"]
 
