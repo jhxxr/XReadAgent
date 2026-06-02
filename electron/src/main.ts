@@ -57,10 +57,11 @@ let pendingFileOpen: string | null = null;
 app.whenReady().then(async () => {
   const paths = resolveSidecarPaths(app);
   sidecarManager.setPythonPath(paths.pythonPath);
-  if (paths.venvPath || paths.backendPath) {
+  if (paths.venvPath || paths.backendPath || paths.frontendPath) {
     sidecarManager.setOptions({
       venvPath: paths.venvPath || undefined,
       backendPath: paths.backendPath || undefined,
+      frontendPath: paths.frontendPath || undefined,
     });
   }
 

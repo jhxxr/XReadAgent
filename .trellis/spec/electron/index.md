@@ -80,10 +80,34 @@ electron/
 3. Main process polls: GET http://127.0.0.1:<N>/healthz → 200
 4. Main process loads renderer URL:
    - Dev: http://localhost:5173 (Vite HMR)
-   - Prod: http://127.0.0.1:<N>/ (FastAPI static files)
+   - Prod: http://127.0.0.1:<N>/ (sidecar serves the built SPA — see *Frontend SPA Serving Contract*)
 5. On sidecar crash: auto-restart up to 3 times with exponential backoff
 6. On app quit: SIGTERM → 5s timeout → SIGKILL (Unix) / taskkill /F (Windows)
 ```
+
+### Frontend SPA Serving Contract
+
+In a packaged build the renderer loads `http://127.0.0.1:<N>/` from the **sidecar** (not Vite),
+so the Python sidecar — not Electron — must serve the built React SPA. This is wired across two
+layers and breaks silently if either half is missing:
+
+- **Electron half** (`sidecar.ts`): `resolveSidecarPaths()` returns `frontendPath = resources/frontend`
+  in production (matches `electron-builder.yml`'s `from: ../frontend/dist` → `to: frontend`), and
+  `buildSidecarEnv()` exports it as **`XREAD_FRONTEND_DIR`**. Dev returns `""` (Vite serves the UI),
+  so the var stays unset.
+- **Sidecar half** (`backend/.../api/main.py`): `create_app()` calls `_mount_frontend(app)` **last**
+  (after the `/mcp` mount). It serves the SPA **only when `XREAD_FRONTEND_DIR` is set** to a dir
+  containing `index.html`; otherwise the sidecar is API-only (preserves test/dev behavior). It mounts
+  hashed assets at `/assets` and adds a catch-all that returns `index.html` for client-side
+  (browser-history) routes — so reloads on `/workspace`, `/settings`, etc. work.
+
+> **Gotcha — `404 {"detail":"Not Found"}` at `/` → blank, unusable app.** If the sidecar has no
+> SPA-serving route (the original bug) **or** Electron never passes `XREAD_FRONTEND_DIR`, loading `/`
+> 404s and the whole window is dead. The catch-all keeps `api/`, `ws/`, `mcp`, `healthz` as JSON 404
+> (never swallowed into the SPA HTML) and rejects `../` traversal. The env var name must stay
+> **byte-identical** between `sidecar.ts` and `main.py`. Covered by `backend/tests/test_api.py`
+> (SPA root / fallback / asset / `/api` 404 / unset-var 404) and `electron/tests/sidecar.test.ts`
+> (`buildSidecarEnv` sets/omits the var).
 
 ### Release Python Bundle Contract
 

@@ -61,6 +61,12 @@ export interface SidecarOptions {
    * the xreadagent package.
    */
   backendPath?: string;
+  /**
+   * Path to the bundled frontend dist directory (production only).
+   * When set, the sidecar serves the SPA from here (exposed as
+   * XREAD_FRONTEND_DIR). Unset in dev (Vite serves the UI).
+   */
+  frontendPath?: string;
 }
 
 export interface SidecarHandle {
@@ -501,9 +507,12 @@ export function buildSidecarEnv(
     }
   }
 
+  if (options.frontendPath) {
+    env.XREAD_FRONTEND_DIR = options.frontendPath;
+  }
+
   // Preserve any inherited PYTHONPATH after our injected entries.
-  if (baseEnv.PYTHONPATH) {
-    pythonPathParts.push(baseEnv.PYTHONPATH);
+  if (baseEnv.PYTHONPATH) {    pythonPathParts.push(baseEnv.PYTHONPATH);
   }
   if (pythonPathParts.length > 0) {
     env.PYTHONPATH = pythonPathParts.join(path.delimiter);
@@ -560,6 +569,7 @@ export interface ResolvedSidecarPaths {
   pythonPath: string;
   venvPath: string;
   backendPath: string;
+  frontendPath: string;
 }
 
 /**
@@ -580,7 +590,7 @@ export function resolveSidecarPaths(
 
   if (!app.isPackaged) {
     // Development: no venvPath/backendPath needed — the project .venv has everything.
-    return { pythonPath, venvPath: "", backendPath: "" };
+    return { pythonPath, venvPath: "", backendPath: "", frontendPath: "" };
   }
 
   const resPath = resourcesPath ?? process.resourcesPath;
@@ -588,5 +598,6 @@ export function resolveSidecarPaths(
     pythonPath,
     venvPath: path.join(resPath, "python-venv"),
     backendPath: path.join(resPath, "backend"),
+    frontendPath: path.join(resPath, "frontend"),
   };
 }

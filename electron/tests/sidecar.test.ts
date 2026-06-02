@@ -149,6 +149,7 @@ describe("resolveSidecarPaths", () => {
     expect(paths.pythonPath).toContain(".venv");
     expect(paths.venvPath).toBe("");
     expect(paths.backendPath).toBe("");
+    expect(paths.frontendPath).toBe("");
   });
 
   it("returns all production paths in packaged mode", () => {
@@ -161,6 +162,7 @@ describe("resolveSidecarPaths", () => {
     expect(paths.pythonPath).toContain("python");
     expect(paths.venvPath).toBe(path.join("/app/resources", "python-venv"));
     expect(paths.backendPath).toBe(path.join("/app/resources", "backend"));
+    expect(paths.frontendPath).toBe(path.join("/app/resources", "frontend"));
   });
 
   it("returns consistent paths when resourcesPath is provided explicitly", () => {
@@ -261,6 +263,24 @@ describe("buildSidecarEnv", () => {
       {},
     );
     expect(env.PYTHONPATH).toBe("override");
+  });
+
+  it("sets XREAD_FRONTEND_DIR when frontendPath is provided", () => {
+    const env = buildSidecarEnv(
+      { pythonPath: "py", frontendPath: "/res/frontend" },
+      "win32",
+      {},
+    );
+    expect(env.XREAD_FRONTEND_DIR).toBe("/res/frontend");
+  });
+
+  it("leaves XREAD_FRONTEND_DIR unset when frontendPath is absent", () => {
+    const env = buildSidecarEnv(
+      { pythonPath: "py" },
+      "win32",
+      {},
+    );
+    expect(env.XREAD_FRONTEND_DIR).toBeUndefined();
   });
 });
 

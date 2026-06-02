@@ -7,9 +7,11 @@ import socket
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from xreadagent.api.main import create_app
@@ -43,6 +45,86 @@ def test_cors_allows_localhost() -> None:
     )
     assert response.status_code == 200
     assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+
+_SPA_SENTINEL = '<!doctype html><div id="root">SPA</div>'
+_ASSET_CONTENT = "console.log('x')"
+
+
+def _write_fake_frontend(root: Path) -> None:
+    (root / "index.html").write_text(_SPA_SENTINEL, encoding="utf-8")
+    assets = root / "assets"
+    assets.mkdir()
+    (assets / "app.js").write_text(_ASSET_CONTENT, encoding="utf-8")
+
+
+def test_spa_root_serves_index_html(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_fake_frontend(tmp_path)
+    monkeypatch.setenv("XREAD_FRONTEND_DIR", str(tmp_path))
+    client = TestClient(create_app())
+
+    response = client.get("/")
+    assert response.status_code == 200
+    assert _SPA_SENTINEL in response.text
+    assert response.headers["content-type"].startswith("text/html")
+
+
+def test_spa_fallback_serves_index_for_client_route(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_fake_frontend(tmp_path)
+    monkeypatch.setenv("XREAD_FRONTEND_DIR", str(tmp_path))
+    client = TestClient(create_app())
+
+    # /workspace is a client-side route with no matching file on disk.
+    response = client.get("/workspace")
+    assert response.status_code == 200
+    assert _SPA_SENTINEL in response.text
+
+
+def test_spa_serves_static_asset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_fake_frontend(tmp_path)
+    monkeypatch.setenv("XREAD_FRONTEND_DIR", str(tmp_path))
+    client = TestClient(create_app())
+
+    response = client.get("/assets/app.js")
+    assert response.status_code == 200
+    assert response.text == _ASSET_CONTENT
+
+
+def test_api_404_not_swallowed_by_spa(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_fake_frontend(tmp_path)
+    monkeypatch.setenv("XREAD_FRONTEND_DIR", str(tmp_path))
+    client = TestClient(create_app())
+
+    response = client.get("/api/does-not-exist")
+    assert response.status_code == 404
+    # Must NOT be the SPA HTML — it should surface a JSON 404.
+    assert _SPA_SENTINEL not in response.text
+    assert response.headers["content-type"].startswith("application/json")
+
+
+def test_healthz_ok_with_frontend_mounted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_fake_frontend(tmp_path)
+    monkeypatch.setenv("XREAD_FRONTEND_DIR", str(tmp_path))
+    client = TestClient(create_app())
+
+    response = client.get("/healthz")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+
+
+def test_root_404_when_frontend_not_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    # No XREAD_FRONTEND_DIR set → API-only default (current behavior preserved).
+    monkeypatch.delenv("XREAD_FRONTEND_DIR", raising=False)
+    client = TestClient(create_app())
+
+    response = client.get("/")
+    assert response.status_code == 404
 
 
 def _pick_free_port() -> int:

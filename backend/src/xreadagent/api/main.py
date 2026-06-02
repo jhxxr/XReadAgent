@@ -19,6 +19,7 @@ so tests can inject a stub via ``create_app(translation_service=...)``.
 from __future__ import annotations
 
 import importlib.metadata
+import os
 import re
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
@@ -28,6 +29,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.websockets import WebSocketState
 
@@ -243,7 +245,68 @@ def create_app(
         # mcp SDK not installed — MCP endpoints are not available.
         pass
 
+    _mount_frontend(app)
+
     return app
+
+
+def _frontend_dir() -> Path | None:
+    """Locate the built frontend SPA directory, or ``None`` if not configured.
+
+    Production: the Electron wrapper sets ``XREAD_FRONTEND_DIR`` to the bundled
+    ``resources/frontend`` directory. When the variable is unset (e.g. pytest,
+    or ``python -m xreadagent.api`` standalone in dev where Vite serves the UI),
+    we return ``None`` and the sidecar runs API-only — preserving prior behavior.
+    """
+    env_dir = os.environ.get("XREAD_FRONTEND_DIR", "").strip()
+    if not env_dir:
+        return None
+    candidate = Path(env_dir)
+    if (candidate / "index.html").is_file():
+        return candidate
+    return None
+
+
+def _mount_frontend(app: FastAPI) -> None:
+    """Serve the built frontend SPA when ``XREAD_FRONTEND_DIR`` points at one.
+
+    Mounts hashed static assets under ``/assets`` and adds a catch-all that
+    returns ``index.html`` for any non-API route so client-side (browser-history)
+    routing works on first load and on reload of deep links. Control-plane
+    prefixes (``/api``, ``/ws``, ``/mcp``, ``/healthz``) keep their JSON 404s.
+    """
+    dist = _frontend_dir()
+    if dist is None:
+        return
+    index_html = dist / "index.html"
+
+    assets_dir = dist / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    _RESERVED_PREFIXES = ("api/", "ws/", "mcp/", "healthz")
+
+    @app.get("/", include_in_schema=False)
+    async def _spa_root() -> FileResponse:
+        return FileResponse(index_html)
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def _spa_fallback(full_path: str) -> FileResponse:
+        # API / websocket / MCP / health paths must surface their own JSON
+        # 404 rather than being swallowed into the SPA HTML.
+        if full_path == "mcp" or full_path.startswith(_RESERVED_PREFIXES):
+            raise HTTPException(status_code=404, detail="Not Found")
+        # Serve a real static file from dist when it exists (e.g. favicon),
+        # with strict containment so "../" can't escape the dist root.
+        candidate = (dist / full_path).resolve()
+        try:
+            candidate.relative_to(dist.resolve())
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="Not Found") from exc
+        if candidate.is_file():
+            return FileResponse(candidate)
+        # Otherwise it's a client-side route → serve the SPA shell.
+        return FileResponse(index_html)
 
 
 def _open_workspace(workspace_path: str) -> Workspace:
