@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getConcepts, getPapers, getQueries } from "@/lib/api";
-import { readWorkspacePath } from "@/lib/workspace";
+import { useWorkspaceActions } from "@/lib/use-workspace-actions";
 import type { ConceptSummary, PaperSummary, QuerySummary } from "@/types/api";
 
 function PapersTab({ workspacePath }: { workspacePath: string }) {
@@ -223,7 +223,7 @@ function QueriesTab({ workspacePath }: { workspacePath: string }) {
 }
 
 export function WorkspaceRoute() {
-  const workspacePath = readWorkspacePath();
+  const { importDocument, isImporting, workspacePath } = useWorkspaceActions();
 
   if (!workspacePath) {
     return (
@@ -268,9 +268,16 @@ export function WorkspaceRoute() {
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle />
           <Separator orientation="vertical" className="mx-1 h-6" />
-          <Button size="sm" className="gap-2" disabled>
+          <Button
+            size="sm"
+            className="gap-2"
+            disabled={isImporting}
+            onClick={() => {
+              void importDocument();
+            }}
+          >
             <PaperclipIcon className="size-3.5" />
-            Import
+            {isImporting ? "Importing..." : "Import"}
           </Button>
         </div>
       </header>

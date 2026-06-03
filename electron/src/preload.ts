@@ -47,6 +47,8 @@ export interface ElectronAPI {
   sendSplashRetry: () => void;
   /** Show an open-folder dialog and return the selected path(s). */
   showOpenFolderDialog: (title?: string) => Promise<string[]>;
+  /** Show an open-file dialog and return the selected path(s). */
+  showOpenFileDialog: (title?: string) => Promise<string[]>;
   /** Show a native notification. */
   showNotification: (title: string, body: string) => void;
   /** Query the current sidecar status (running/stopped/pid/port). */
@@ -99,6 +101,10 @@ const api: ElectronAPI = {
 
   showOpenFolderDialog: async (title?: string) => {
     return ipcRenderer.invoke("show-open-folder-dialog", title) as Promise<string[]>;
+  },
+
+  showOpenFileDialog: async (title?: string) => {
+    return ipcRenderer.invoke("show-open-file-dialog", title) as Promise<string[]>;
   },
 
   showNotification: (title: string, body: string) => {

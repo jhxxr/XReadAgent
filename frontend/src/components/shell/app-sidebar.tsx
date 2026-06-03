@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useWorkspaceActions } from "@/lib/use-workspace-actions";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +30,8 @@ const NAV_ITEMS: readonly NavItem[] = [
 export function AppSidebar() {
   const router = useRouterState();
   const pathname = router.location.pathname;
+  const { selectWorkspace, workspacePath } = useWorkspaceActions();
+  const workspaceLabel = workspacePath.trim() || "Default";
 
   return (
     <aside className="bg-sidebar text-sidebar-foreground border-sidebar-border flex h-full w-[260px] flex-col border-r">
@@ -44,6 +47,9 @@ export function AppSidebar() {
       <div className="px-3 py-3">
         <button
           type="button"
+          onClick={() => {
+            void selectWorkspace();
+          }}
           className={cn(
             "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm transition-colors",
           )}
@@ -53,7 +59,7 @@ export function AppSidebar() {
             <span className="text-muted-foreground text-[0.7rem] uppercase tracking-wider">
               Workspace
             </span>
-            <span className="font-medium">Default</span>
+            <span className="truncate font-medium">{workspaceLabel}</span>
           </div>
           <ChevronDownIcon className="text-muted-foreground size-4" />
         </button>

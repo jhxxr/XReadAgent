@@ -202,7 +202,8 @@ The preload script exposes `window.electronAPI` with these methods:
 | `getSidecarLogs()` | renderer→main | `Promise<string[]>` | Last 200 log lines |
 | `restartSidecar()` | renderer→main | `Promise<void>` | Restart sidecar |
 | `getSidecarRestartInfo()` | renderer→main | `Promise<SidecarRestartInfo>` | Current restart state |
-| `showOpenFolderDialog()` | renderer→main | `Promise<string\|null>` | Native folder picker |
+| `showOpenFolderDialog()` | renderer→main | `Promise<string[]>` | Native folder picker; empty array means canceled |
+| `showOpenFileDialog()` | renderer→main | `Promise<string[]>` | Native document picker for ingest/import; empty array means canceled |
 | `showNotification(opts)` | renderer→main | `Promise<void>` | System notification |
 | `onSidecarReady(cb)` | main→renderer | `void` | Sidecar ready callback |
 | `onSidecarStatus(cb)` | main→renderer | `void` | Status change callback |

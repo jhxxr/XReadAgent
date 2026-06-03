@@ -308,6 +308,8 @@ function createMainWindow(): BrowserWindow {
     mainWindow = null;
   });
 
+  setApplicationMenu();
+
   // Load the appropriate URL.
   loadRenderer(mainWindow);
 
@@ -558,6 +560,18 @@ ipcMain.handle("show-open-folder-dialog", async (_event, title?: string) => {
   const result = await dialog.showOpenDialog({
     title: title ?? "Select Folder",
     properties: ["openDirectory"],
+  });
+  return result.filePaths;
+});
+
+ipcMain.handle("show-open-file-dialog", async (_event, title?: string) => {
+  const result = await dialog.showOpenDialog({
+    title: title ?? "Select Document",
+    properties: ["openFile"],
+    filters: [
+      { name: "Documents", extensions: ["pdf", "docx", "html", "htm", "md", "txt"] },
+      { name: "All Files", extensions: ["*"] },
+    ],
   });
   return result.filePaths;
 });

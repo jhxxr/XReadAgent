@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -8,6 +9,7 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppSidebar } from "@/components/shell/app-sidebar";
@@ -32,6 +34,10 @@ function stubMatchMedia() {
 }
 
 function renderSidebar(initialPath = "/workspace") {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+  });
+
   const rootRoute = createRootRoute({
     component: function SidebarLayout() {
       return (
@@ -77,14 +83,57 @@ function renderSidebar(initialPath = "/workspace") {
 
   return render(
     <ThemeProvider defaultTheme="light">
-      <RouterProvider router={router} />
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
     </ThemeProvider>,
   );
+}
+
+function installMockElectronAPI(): NonNullable<Window["electronAPI"]> {
+  const api: NonNullable<Window["electronAPI"]> = {
+    platform: "win32",
+    isPackaged: true,
+    getSidecarPort: vi.fn(() => 8765),
+    onSidecarReady: vi.fn(),
+    onSidecarStatus: vi.fn(),
+    onSplashStatus: vi.fn(),
+    onSplashError: vi.fn(),
+    sendSplashRetry: vi.fn(),
+    showOpenFolderDialog: vi.fn().mockResolvedValue(["/tmp/ws"]),
+    showOpenFileDialog: vi.fn().mockResolvedValue([]),
+    showNotification: vi.fn(),
+    getSidecarStatus: vi.fn().mockResolvedValue({
+      status: "running",
+      pid: 1,
+      port: 8765,
+      startedAt: "2026-06-03T00:00:00Z",
+      restartCount: 0,
+    }),
+    getSidecarLogs: vi.fn().mockResolvedValue([]),
+    restartSidecar: vi.fn().mockResolvedValue(undefined),
+    onSidecarRestarting: vi.fn(),
+    getSidecarRestartInfo: vi.fn().mockResolvedValue(null),
+    onDeepLink: vi.fn(),
+    onOpenWorkspace: vi.fn(),
+    onMenuNavigate: vi.fn(),
+  };
+  Object.defineProperty(window, "electronAPI", {
+    configurable: true,
+    value: api,
+    writable: true,
+  });
+  return api;
 }
 
 describe("AppSidebar", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    Object.defineProperty(window, "electronAPI", {
+      configurable: true,
+      value: undefined,
+      writable: true,
+    });
     stubMatchMedia();
   });
 
@@ -122,5 +171,16 @@ describe("AppSidebar", () => {
     renderSidebar();
 
     expect(await screen.findByText("Default")).toBeInTheDocument();
+  });
+
+  it("opens the native workspace picker from the switcher", async () => {
+    const api = installMockElectronAPI();
+    const user = userEvent.setup();
+    renderSidebar();
+
+    await user.click(await screen.findByRole("button", { name: /workspace default/i }));
+
+    expect(api.showOpenFolderDialog).toHaveBeenCalledWith("Open Workspace");
+    expect(window.localStorage.getItem("xreadagent.workspacePath")).toBe("/tmp/ws");
   });
 });

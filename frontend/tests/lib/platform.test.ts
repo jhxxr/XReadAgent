@@ -28,6 +28,7 @@ function installMockElectronAPI(overrides: { getSidecarPort: () => number }): vo
     onSplashError: vi.fn(),
     sendSplashRetry: vi.fn(),
     showOpenFolderDialog: vi.fn().mockResolvedValue([]),
+    showOpenFileDialog: vi.fn().mockResolvedValue([]),
     showNotification: vi.fn(),
     getSidecarStatus: vi.fn().mockResolvedValue({}),
     getSidecarLogs: vi.fn().mockResolvedValue([]),

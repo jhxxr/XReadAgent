@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { FilePlusIcon, NotebookTextIcon } from "lucide-react";
+import { FilePlusIcon, FolderOpenIcon, NotebookTextIcon } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -11,9 +11,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useWorkspaceActions } from "@/lib/use-workspace-actions";
 
 export function WorkspaceEmptyState() {
   const [explainerOpen, setExplainerOpen] = useState(false);
+  const { importDocument, isImporting, selectWorkspace, workspacePath } = useWorkspaceActions();
 
   return (
     <div className="flex h-full items-center justify-center px-6 py-12">
@@ -31,13 +33,32 @@ export function WorkspaceEmptyState() {
             </p>
           </div>
 
-          <Button size="lg" className="gap-2" disabled>
-            <FilePlusIcon className="size-4" />
-            Import paper
-            <span className="text-primary-foreground/70 ml-2 text-[0.65rem] uppercase tracking-wider">
-              Phase 2
-            </span>
-          </Button>
+          <div className="flex flex-col items-center gap-2 sm:flex-row">
+            {!workspacePath && (
+              <Button
+                size="lg"
+                className="gap-2"
+                onClick={() => {
+                  void selectWorkspace();
+                }}
+              >
+                <FolderOpenIcon className="size-4" />
+                Open workspace
+              </Button>
+            )}
+            <Button
+              size="lg"
+              variant={workspacePath ? "default" : "outline"}
+              className="gap-2"
+              disabled={isImporting}
+              onClick={() => {
+                void importDocument();
+              }}
+            >
+              <FilePlusIcon className="size-4" />
+              {isImporting ? "Importing..." : "Import paper"}
+            </Button>
+          </div>
 
           <button
             type="button"
