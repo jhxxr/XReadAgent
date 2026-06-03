@@ -661,3 +661,36 @@ Diagnosed and fixed packaged XReadAgent crash 'Sidecar exited before becoming re
 ### Next Steps
 
 - None - task complete
+
+
+## Session 20: Fix workspace import actions
+
+**Date**: 2026-06-03
+**Task**: Fix workspace import actions
+**Branch**: `main`
+
+### Summary
+
+Enabled the workspace switcher and import actions in the renderer, added Electron file-picker IPC for document import, refreshed workspace query caches after ingest, and covered the desktop interaction path with frontend regression tests.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `af1a204` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

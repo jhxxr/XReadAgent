@@ -1,7 +1,7 @@
 {
-  "id": "fix-sidecar-serve-frontend-spa-and-remove-404-not-found-at",
-  "name": "fix-sidecar-serve-frontend-spa-and-remove-404-not-found-at",
-  "title": "fix sidecar: serve frontend SPA and remove 404 Not Found at /",
+  "id": "release-v0-0-4-sidecar-fix-push-tag-let-ci-build-publish",
+  "name": "release-v0-0-4-sidecar-fix-push-tag-let-ci-build-publish",
+  "title": "release v0.0.4 (sidecar fix) — push tag, let CI build & publish",
   "description": "",
   "status": "in_progress",
   "dev_type": null,
