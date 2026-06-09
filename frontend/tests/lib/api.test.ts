@@ -150,6 +150,8 @@ describe("api client", () => {
         authors: ["Vaswani"],
         year: 2017,
         ingestedAt: "2026-05-27T00:00:00Z",
+        sourcePath: "raw/_processed/attention-aaa.pdf",
+        sourceKind: "pdf",
       },
     ];
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
@@ -168,7 +170,13 @@ describe("api client", () => {
   });
 
   it("fetches a single paper page", async () => {
-    const page = { slug: "attention-aaa", content: "# Hello", frontmatter: { title: "Hello" } };
+    const page = {
+      slug: "attention-aaa",
+      content: "# Hello",
+      frontmatter: { title: "Hello" },
+      sourcePath: "raw/_processed/attention-aaa.pdf",
+      sourceKind: "pdf",
+    };
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify(page), {
         status: 200,
@@ -198,6 +206,8 @@ describe("api client", () => {
       slug: "self-attention",
       content: "# Self-Attention",
       frontmatter: { title: "Self-Attention" },
+      sourcePath: null,
+      sourceKind: "",
     };
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify(page), {
@@ -233,6 +243,8 @@ describe("api client", () => {
       slug: "general/what-is-attention",
       content: "# Answer",
       frontmatter: { question: "What is attention?" },
+      sourcePath: null,
+      sourceKind: "",
     };
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify(page), {

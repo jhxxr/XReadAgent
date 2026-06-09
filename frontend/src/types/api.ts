@@ -17,6 +17,10 @@ export interface PaperSummary {
   year: number | null;
   /** ISO 8601 UTC timestamp. */
   ingestedAt: string;
+  /** Workspace-relative canonical source path, usually `raw/_processed/<slug>.pdf`. */
+  sourcePath: string | null;
+  /** Source kind from `state/sources.json`, e.g. `pdf` or `office`. */
+  sourceKind: string;
 }
 
 /**
@@ -156,6 +160,10 @@ export interface WikiPageResponse {
   slug: string;
   content: string;
   frontmatter: Record<string, unknown>;
+  /** Workspace-relative canonical source path when this page maps to a source row. */
+  sourcePath: string | null;
+  /** Source kind from `state/sources.json`; empty for pages without source rows. */
+  sourceKind: string;
 }
 
 /** Body of `POST /api/ingest`. */

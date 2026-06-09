@@ -10,16 +10,23 @@ import { TranslateDialog } from "@/components/reader/translate-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { buildWorkspaceFileUrl, getTranslationsManifest } from "@/lib/api";
+import { buildWorkspaceFileUrl, getPaper, getTranslationsManifest } from "@/lib/api";
 import { notifyOnCompletion } from "@/lib/notifications";
 import { readWorkspacePath } from "@/lib/workspace";
-import type { FinishEvent, TranslationEntry, TranslationsManifest } from "@/types/api";
+import type {
+  FinishEvent,
+  TranslationEntry,
+  TranslationsManifest,
+  WikiPageResponse,
+} from "@/types/api";
 import type { PdfToolbarProps } from "@/components/reader/pdf-toolbar";
 
 type ReaderTab = "original" | "dual" | "translated";
 
 interface SourcesInfo {
   original: string | null;
+  sourcePath: string | null;
+  sourceKind: string;
   mono: string | null;
   dual: string | null;
 }
@@ -37,16 +44,20 @@ function selectTranslationForSlug(
 
 function buildSources(
   workspacePath: string,
-  slug: string,
+  paper: WikiPageResponse | undefined,
   entry: TranslationEntry | null,
 ): SourcesInfo {
+  const sourcePath = paper?.sourcePath ?? null;
+  const sourceKind = paper?.sourceKind ?? "";
+  const hasPdfSource = sourcePath?.toLowerCase().endsWith(".pdf") ?? false;
+  const pdfSourcePath = hasPdfSource ? sourcePath : null;
   return {
-    // Phase 2 has no source-path-discovery endpoint yet; we rely on the
-    // convention that the original PDF lives at `raw/<slug>.pdf` or that
-    // a future ingest manifest exposes it. For now, surface `null` so the
-    // Original tab shows a clear "no original on this workspace" state.
     original:
-      workspacePath.length > 0 ? buildWorkspaceFileUrl(workspacePath, `raw/${slug}.pdf`) : null,
+      pdfSourcePath !== null && workspacePath.length > 0
+        ? buildWorkspaceFileUrl(workspacePath, pdfSourcePath)
+        : null,
+    sourcePath,
+    sourceKind,
     mono:
       entry?.monoPath !== undefined && entry.monoPath !== null && workspacePath.length > 0
         ? buildWorkspaceFileUrl(workspacePath, entry.monoPath)
@@ -76,8 +87,18 @@ export function PaperReadRoute() {
     enabled: workspacePath.length > 0,
   });
 
+  const paperQuery = useQuery({
+    queryKey: ["paper", workspacePath, slug],
+    queryFn: () => getPaper(workspacePath, slug),
+    enabled: workspacePath.length > 0,
+  });
+
   const entry = selectTranslationForSlug(manifestQuery.data, slug);
-  const sources = buildSources(workspacePath, slug, entry);
+  const sources = buildSources(workspacePath, paperQuery.data, entry);
+  const absoluteSourcePath =
+    sources.original !== null && sources.sourcePath !== null
+      ? joinWorkspacePath(workspacePath, sources.sourcePath)
+      : null;
 
   const initialTab = defaultTab(sources);
   const [tab, setTab] = React.useState<ReaderTab>(initialTab);
@@ -161,13 +182,16 @@ export function PaperReadRoute() {
         <Badge variant="outline">read</Badge>
         <span className="text-muted-foreground font-mono text-xs">{slug}</span>
         <div className="ml-auto flex items-center gap-2">
+          {workspacePath.length > 0 && absoluteSourcePath === null && !paperQuery.isLoading && (
+            <span className="text-muted-foreground text-xs">No PDF source</span>
+          )}
           <Button
             size="sm"
             className="gap-2"
             onClick={() => {
               setTranslateOpen(true);
             }}
-            disabled={workspacePath.length === 0}
+            disabled={workspacePath.length === 0 || absoluteSourcePath === null}
           >
             <LanguagesIcon className="size-3.5" />
             Translate
@@ -179,6 +203,8 @@ export function PaperReadRoute() {
         <NoWorkspaceState />
       ) : manifestQuery.isError ? (
         <ManifestErrorState message={manifestQuery.error.message} />
+      ) : paperQuery.isError ? (
+        <ManifestErrorState message={paperQuery.error.message} />
       ) : (
         <Tabs
           value={tab}
@@ -213,7 +239,11 @@ export function PaperReadRoute() {
                 renderToolbar={renderToolbar}
               />
             ) : (
-              <EmptyPaneState>No original PDF on disk for this paper.</EmptyPaneState>
+              <EmptyPaneState>
+                {paperQuery.isLoading
+                  ? "Loading source metadata..."
+                  : "No PDF source is available for this paper."}
+              </EmptyPaneState>
             )}
           </TabsContent>
           <TabsContent value="dual" className="m-0 min-h-0 flex-1 overflow-hidden">
@@ -254,17 +284,23 @@ export function PaperReadRoute() {
         </Tabs>
       )}
 
-      {workspacePath.length > 0 && (
+      {workspacePath.length > 0 && absoluteSourcePath !== null && (
         <TranslateDialog
           open={translateOpen}
           onOpenChange={setTranslateOpen}
           workspacePath={workspacePath}
-          sourcePath={`${workspacePath}/raw/${slug}.pdf`}
+          sourcePath={absoluteSourcePath}
           onFinish={handleFinish}
         />
       )}
     </div>
   );
+}
+
+function joinWorkspacePath(workspacePath: string, relativePath: string): string {
+  const normalizedWorkspace = workspacePath.replaceAll("\\", "/").replace(/\/+$/, "");
+  const normalizedRelative = relativePath.replaceAll("\\", "/").replace(/^\/+/, "");
+  return `${normalizedWorkspace}/${normalizedRelative}`;
 }
 
 function NoWorkspaceState() {

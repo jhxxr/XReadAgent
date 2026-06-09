@@ -43,6 +43,8 @@ const MOCK_CONCEPT = {
     title: "Test Concept Title",
     aliases: ["alias-one", "alias-two"],
   },
+  sourcePath: null,
+  sourceKind: "",
 };
 
 function renderConcept() {

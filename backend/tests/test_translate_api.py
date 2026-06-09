@@ -148,6 +148,39 @@ def test_ws_streams_events_in_order(tmp_path: Path) -> None:
     assert third["mono_path"] == "translations/x.mono.pdf"
 
 
+def test_ws_streams_events_for_factory_created_service(tmp_path: Path) -> None:
+    pdf = _make_pdf(tmp_path)
+    stub = _StubService(_canned())
+
+    def factory(workspace: Any) -> _StubService:
+        _ = workspace
+        return stub
+
+    client = TestClient(
+        create_app(translation_service_factory=factory)  # type: ignore[arg-type]
+    )
+    response = client.post(
+        "/api/translate",
+        json={
+            "workspacePath": str(tmp_path),
+            "sourcePath": str(pdf),
+            "model": "anthropic:claude-fake",
+            "targetLang": "zh",
+        },
+    )
+    assert response.status_code == 200, response.text
+    job_id = response.json()["jobId"]
+
+    with client.websocket_connect(f"/ws/jobs/{job_id}") as ws:
+        first = ws.receive_json()
+        second = ws.receive_json()
+        third = ws.receive_json()
+
+    assert first["type"] == "stage_start"
+    assert second["type"] == "stage_end"
+    assert third["type"] == "finish"
+
+
 def test_ws_unknown_job_sends_error_then_closes(tmp_path: Path) -> None:
     stub = _StubService(_canned())
     client = TestClient(create_app(translation_service=stub))  # type: ignore[arg-type]

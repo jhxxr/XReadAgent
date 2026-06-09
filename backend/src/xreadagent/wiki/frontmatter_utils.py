@@ -92,6 +92,8 @@ def list_papers(workspace: Workspace) -> list[dict[str, Any]]:
                 "authors": fm.get("authors", []) or [],
                 "year": fm.get("year") or None,
                 "ingestedAt": ingested_at,
+                "sourcePath": source.sourcePath if source and source.sourcePath else None,
+                "sourceKind": source.kind if source else "",
             }
         )
     return results

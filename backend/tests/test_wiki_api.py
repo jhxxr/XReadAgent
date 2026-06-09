@@ -14,6 +14,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from xreadagent.api.main import create_app
+from xreadagent.schemas.sources import Source
+from xreadagent.wiki.sources import SourcesIndex
 from xreadagent.wiki.workspace import Workspace
 
 
@@ -33,6 +35,20 @@ def _seeded_workspace(tmp_path: Path) -> Workspace:
         "## Experiments\n\nWMT translation.\n\n## Open Questions\n\nScaling laws.\n",
         encoding="utf-8",
     )
+    sources = SourcesIndex.load(workspace)
+    sources.add_or_update(
+        Source(
+            id="attention-aaa",
+            title="Attention Is All You Need",
+            slug="attention-aaa",
+            kind="pdf",
+            sourcePath="raw/_processed/attention-aaa.pdf",
+            contentHash="abc123",
+            ingestedAt="2026-05-27T00:00:00Z",
+            extractPath="extracts/attention-aaa.md",
+        )
+    )
+    sources.save()
 
     # Write a sample concept page.
     (workspace.concepts_dir / "self-attention.md").write_text(
@@ -76,6 +92,8 @@ def test_papers_list_returns_all_papers(tmp_path: Path) -> None:
     assert body[0]["title"] == "Attention Is All You Need"
     assert body[0]["authors"] == ["Vaswani", "Shazeer"]
     assert body[0]["year"] == 2017
+    assert body[0]["sourcePath"] == "raw/_processed/attention-aaa.pdf"
+    assert body[0]["sourceKind"] == "pdf"
 
 
 def test_papers_list_returns_empty_for_no_papers(tmp_path: Path) -> None:
@@ -116,6 +134,8 @@ def test_paper_detail_returns_content_and_frontmatter(tmp_path: Path) -> None:
     assert "Transformer architecture" in body["content"]
     assert body["frontmatter"]["title"] == "Attention Is All You Need"
     assert body["frontmatter"]["year"] == 2017
+    assert body["sourcePath"] == "raw/_processed/attention-aaa.pdf"
+    assert body["sourceKind"] == "pdf"
 
 
 def test_paper_detail_returns_404_for_missing_slug(tmp_path: Path) -> None:

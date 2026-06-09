@@ -19,6 +19,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from xreadagent.api.main import create_app
+from xreadagent.translation.service import TranslationService
 
 
 def _pick_port(requested: int) -> int:
@@ -36,7 +37,10 @@ def _build_server(port: int) -> uvicorn.Server:
         sys.stdout.flush()
         yield
 
-    app = create_app(lifespan=lifespan)
+    app = create_app(
+        lifespan=lifespan,
+        translation_service_factory=lambda workspace: TranslationService(workspace),
+    )
     config = uvicorn.Config(
         app,
         host="127.0.0.1",

@@ -26,6 +26,7 @@ from xreadagent.wiki.frontmatter_utils import (
     read_page_content,
     read_page_frontmatter,
 )
+from xreadagent.wiki.sources import SourcesIndex
 from xreadagent.wiki.workspace import Workspace
 
 # ---------------------------------------------------------------------------
@@ -43,6 +44,8 @@ class PaperSummaryResponse(_Strict):
     authors: list[str] = Field(default_factory=list)
     year: int | None = None
     ingestedAt: str = ""
+    sourcePath: str | None = None
+    sourceKind: str = ""
 
 
 class ConceptSummaryResponse(_Strict):
@@ -63,6 +66,8 @@ class WikiPageResponse(_Strict):
     slug: str
     content: str
     frontmatter: dict[str, Any] = Field(default_factory=dict)
+    sourcePath: str | None = None
+    sourceKind: str = ""
 
 
 class IngestRequest(_Strict):
@@ -169,10 +174,13 @@ async def get_paper(
     path = workspace.papers_dir / f"{slug}.md"
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail=f"paper not found: {slug}")
+    source = SourcesIndex.load(workspace).find_by_id(slug)
     return WikiPageResponse(
         slug=slug,
         content=read_page_content(path),
         frontmatter=read_page_frontmatter(path),
+        sourcePath=source.sourcePath if source and source.sourcePath else None,
+        sourceKind=source.kind if source else "",
     )
 
 
@@ -328,3 +336,4 @@ async def post_query(req: QueryRequest) -> QueryResultResponse:
         filesTouched=result.files_touched,
         durationS=result.duration_s,
     )
+

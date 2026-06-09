@@ -114,6 +114,8 @@ def create_app(
     # without import cycles.
     app.state.translation_service = translation_service
     app.state.translation_service_factory = translation_service_factory
+    app.state.translation_services_by_workspace = {}
+    app.state.translation_services_by_job = {}
 
     # Include the wiki + ingest/query router.
     app.include_router(wiki_router, prefix="/api")
@@ -150,6 +152,7 @@ def create_app(
                 max_tokens=req.maxTokens,
             )
             job_id = service.start_translation(translation_req)
+            app.state.translation_services_by_job[job_id] = service
         except FileNotFoundError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except ValueError as exc:
@@ -195,7 +198,7 @@ def create_app(
 
     @app.websocket("/ws/jobs/{job_id}")
     async def job_events(websocket: WebSocket, job_id: str) -> None:
-        service: TranslationService | None = app.state.translation_service
+        service = _resolve_translation_service_for_job(app, job_id)
         if service is None:
             await websocket.close(code=1008, reason="translation service not configured")
             return
@@ -390,9 +393,22 @@ def _resolve_translation_service(app: FastAPI, workspace_path: Path) -> Translat
             detail="translation service not configured on this sidecar instance",
         )
     workspace = Workspace.at(workspace_path)
+    cache: dict[str, TranslationService] = app.state.translation_services_by_workspace
+    cache_key = str(workspace.root.resolve())
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
     service = factory(workspace)
-    app.state.translation_service = service
+    cache[cache_key] = service
     return service
+
+
+def _resolve_translation_service_for_job(app: FastAPI, job_id: str) -> TranslationService | None:
+    pinned: TranslationService | None = app.state.translation_service
+    if pinned is not None:
+        return pinned
+    by_job: dict[str, TranslationService] = app.state.translation_services_by_job
+    return by_job.get(job_id)
 
 
 app = create_app()

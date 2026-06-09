@@ -15,6 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from xreadagent.api.main import create_app
+from xreadagent.wiki.workspace import Workspace
 
 
 def test_healthz_returns_ok() -> None:
@@ -125,6 +126,56 @@ def test_root_404_when_frontend_not_configured(monkeypatch: pytest.MonkeyPatch) 
 
     response = client.get("/")
     assert response.status_code == 404
+
+
+def test_translation_service_factory_is_cached_per_workspace(tmp_path: Path) -> None:
+    workspace_a = Workspace.at(tmp_path / "a")
+    workspace_a.init_empty("A")
+    workspace_b = Workspace.at(tmp_path / "b")
+    workspace_b.init_empty("B")
+    source_a = workspace_a.raw_dir / "paper.pdf"
+    source_a.write_bytes(b"%PDF-1.4\nfake\n")
+    source_b = workspace_b.raw_dir / "paper.pdf"
+    source_b.write_bytes(b"%PDF-1.4\nfake\n")
+
+    created: list[Path] = []
+
+    class _StubTranslationService:
+        def start_translation(self, request: object) -> str:
+            _ = request
+            return "job-123"
+
+    def factory(workspace: Workspace) -> _StubTranslationService:
+        created.append(workspace.root)
+        return _StubTranslationService()
+
+    client = TestClient(create_app(translation_service_factory=factory))  # type: ignore[arg-type]
+
+    for workspace, source in (
+        (workspace_a, source_a),
+        (workspace_a, source_a),
+        (workspace_b, source_b),
+    ):
+        response = client.post(
+            "/api/translate",
+            json={
+                "workspacePath": str(workspace.root),
+                "sourcePath": str(source),
+                "model": "anthropic:claude-fake",
+            },
+        )
+        assert response.status_code == 200, response.text
+
+    assert created == [workspace_a.root, workspace_b.root]
+
+
+def test_sidecar_entrypoint_wires_translation_service_factory() -> None:
+    from xreadagent.api.__main__ import _build_server
+
+    server = _build_server(8765)
+    app = server.config.app
+    assert hasattr(app.state, "translation_service_factory")
+    assert app.state.translation_service_factory is not None
 
 
 def _pick_free_port() -> int:
