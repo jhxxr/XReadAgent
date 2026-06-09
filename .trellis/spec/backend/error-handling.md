@@ -200,6 +200,138 @@ return FileResponse(resolved, media_type=...)
 
 > **Warning**: never weaken the allowlist into a deny-list ("allow everything except state/"). New subdirs added in the future would be silently exposed. Allow-list is the secure default.
 
+### Pattern: PDF source path contract for reader + BabelDOC
+
+#### Scope / Trigger
+
+Any change that touches PDF import, paper read APIs, PDF.js reader loading, or
+BabelDOC translation handoff. This is a cross-layer storage -> API -> UI ->
+translation contract and must stay explicit.
+
+#### Signatures
+
+- `GET /api/wiki/papers?workspacePath=...` returns each paper summary with
+  `sourcePath: string | null` and `sourceKind: string`.
+- `GET /api/wiki/papers/{slug}?workspacePath=...` returns the same fields on
+  `WikiPageResponse`.
+- `POST /api/translate` still accepts an absolute filesystem `sourcePath`.
+- `GET /api/workspaces/file` still accepts a workspace-relative `path`.
+
+#### Contracts
+
+`Source.sourcePath` in `state/sources.json` is the canonical imported-source
+path. PDF import archives originals under `raw/_processed/{slug}.pdf`, so the
+reader must not guess `raw/{slug}.pdf`.
+
+| Field | Type | Constraint |
+|---|---|---|
+| `sourcePath` | `string | null` | workspace-relative path copied from `Source.sourcePath`; `null` when no source row exists |
+| `sourceKind` | `string` | copied from `Source.kind`; empty string when no source row exists |
+
+The renderer uses `sourcePath` in two ways:
+
+- Original PDF display: pass workspace-relative `sourcePath` to
+  `/api/workspaces/file`.
+- Translation: join `workspacePath` + `sourcePath` into an absolute local path
+  before posting `/api/translate`.
+
+#### Validation & Error Matrix
+
+| Condition | Behavior |
+|---|---|
+| source row missing | API returns `sourcePath: null`, `sourceKind: ""`; UI shows no-PDF state |
+| `sourcePath` exists but is not `.pdf` | UI disables translation and does not call `/api/workspaces/file` for Original |
+| `sourcePath` points outside allowlisted roots | `/api/workspaces/file` rejects it via existing allowlist/traversal checks |
+| absolute translate `sourcePath` missing | `/api/translate` returns 422 from `TranslationService.start_translation` |
+
+#### Good / Base / Bad
+
+- Good: imported PDF row has `sourcePath="raw/_processed/paper-abc.pdf"`; reader
+  displays that file and translation uses `<workspace>/raw/_processed/...pdf`.
+- Base: imported DOCX row has `sourcePath="raw/_processed/notes.docx"`; reader
+  remains reachable but says no PDF source is available.
+- Bad: reader constructs `raw/{slug}.pdf`; normal imports fail because the file
+  lives under `raw/_processed/`.
+
+#### Tests Required
+
+- Backend wiki API tests assert `sourcePath` / `sourceKind` on list and detail.
+- Frontend reader tests assert the PDF.js URL uses the canonical
+  `raw/_processed/...pdf` path and non-PDF sources disable translation.
+- Translate API tests assert missing absolute source paths return 422.
+
+#### Wrong vs Correct
+
+```typescript
+// Wrong: filename convention drift.
+sourcePath={`${workspacePath}/raw/${slug}.pdf`}
+
+// Correct: sourcePath comes from state/sources.json through the paper API.
+sourcePath={joinWorkspacePath(workspacePath, paper.sourcePath)}
+```
+
+### Pattern: Factory-created translation services must map back to WS jobs
+
+#### Scope / Trigger
+
+Any change to `create_app()`, `python -m xreadagent.api`, or
+`/api/translate` + `/ws/jobs/{job_id}` wiring.
+
+#### Signatures
+
+```python
+create_app(
+    *,
+    translation_service: TranslationService | None = None,
+    translation_service_factory: Callable[[Workspace], TranslationService] | None = None,
+) -> FastAPI
+```
+
+#### Contracts
+
+Tests may pin one `translation_service`, but production uses
+`translation_service_factory` because the active workspace is only known from
+the request body. Factory-created services are cached per resolved workspace
+root, and every started `job_id` is mapped back to the service that created it.
+The websocket handler must resolve the service by job id; otherwise production
+jobs start successfully but `/ws/jobs/{job_id}` closes with "translation service
+not configured".
+
+#### Validation & Error Matrix
+
+| Condition | Behavior |
+|---|---|
+| pinned service exists | both POST and WS use the pinned service |
+| factory exists, first workspace request | create and cache a service for that workspace root |
+| factory exists, repeated same workspace | reuse cached service |
+| factory exists, second workspace | create a distinct service |
+| WS job id has no pinned or mapped service | close with 1008 configured-service error |
+| mapped service rejects unknown job | send an `error` frame with `unknown job_id` |
+
+#### Good / Base / Bad
+
+- Good: `POST /api/translate` with workspace A starts job `j1`; `/ws/jobs/j1`
+  streams from workspace A's service.
+- Base: tests inject a pinned stub service and no factory.
+- Bad: `POST` uses a factory but `WS` reads only `app.state.translation_service`;
+  the user sees a job id but no progress stream.
+
+#### Tests Required
+
+- API tests assert factory services are cached per workspace root.
+- Entrypoint tests assert `_build_server()` wires a real factory.
+- Translate API tests assert factory-created jobs can stream events over WS.
+
+#### Wrong vs Correct
+
+```python
+# Wrong: works only for pinned-test service.
+service = app.state.translation_service
+
+# Correct: preserve the job -> service association established by POST.
+service = _resolve_translation_service_for_job(app, job_id)
+```
+
 ---
 
 ### Pattern: Auto-repair structured output

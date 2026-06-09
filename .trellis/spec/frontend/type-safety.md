@@ -61,6 +61,75 @@ Do not invent a `types/index.ts` barrel — `types/api.ts` is the only file curr
 
 When you add an endpoint to the Python sidecar, add the matching TS interface here **first**, then write the `lib/api.ts` function that returns `Promise<Foo>`. The api client is the only file that exits the type-safe world via `(await response.json()) as T` — keep it that way.
 
+### Paper source metadata for PDF reader + translation
+
+#### 1. Scope / Trigger
+
+Any frontend change that displays a paper PDF, opens the reader route, or starts
+a BabelDOC translation. This is a backend -> frontend -> backend round-trip:
+the source path comes from `state/sources.json`, then the UI sends an absolute
+path back to `/api/translate`.
+
+#### 2. Signatures
+
+```typescript
+export interface PaperSummary {
+  sourcePath: string | null;
+  sourceKind: string;
+}
+
+export interface WikiPageResponse {
+  sourcePath: string | null;
+  sourceKind: string;
+}
+```
+
+#### 3. Contracts
+
+`sourcePath` is workspace-relative and canonical. Do not infer the original PDF
+path from the route slug. Imported PDFs are archived by the backend under
+`raw/_processed/{slug}.pdf`, and that path is exposed through the paper API.
+
+| Use | Input | Output |
+|---|---|---|
+| Original PDF tab | `workspacePath` + workspace-relative `sourcePath` | `/api/workspaces/file?...&path=<sourcePath>` URL |
+| Translate dialog | `workspacePath` + workspace-relative `sourcePath` | absolute local filesystem path posted as `sourcePath` |
+| Non-PDF source | `sourcePath` ending in anything other than `.pdf` | no-PDF state; Translate disabled |
+
+#### 4. Validation & Error Matrix
+
+| Condition | UI behavior |
+|---|---|
+| `sourcePath === null` | Original tab shows no-PDF state; Translate disabled |
+| `sourcePath` does not end in `.pdf` | Original tab shows no-PDF state; Translate disabled |
+| `/api/workspaces/file` fails | PDF viewer shows its load error state |
+| `/api/translate` returns non-2xx | Translate dialog shows `ApiError` message |
+
+#### 5. Good/Base/Bad Cases
+
+- Good: `sourcePath="raw/_processed/paper-abc.pdf"` loads Original and enables
+  Translate.
+- Base: `sourcePath=null` keeps the reader route usable but with no-PDF copy.
+- Bad: building `raw/${slug}.pdf` in the route; this misses normal imported
+  PDFs archived under `raw/_processed/`.
+
+#### 6. Tests Required
+
+- API client tests include `sourcePath` / `sourceKind` in paper list and detail
+  fixtures.
+- Reader route tests assert PDF.js receives the canonical workspace-file URL.
+- Reader route tests assert non-PDF sources disable Translate.
+
+#### 7. Wrong vs Correct
+
+```typescript
+// Wrong: route slug is not a file path contract.
+buildWorkspaceFileUrl(workspacePath, `raw/${slug}.pdf`);
+
+// Correct: use the backend-owned source path.
+buildWorkspaceFileUrl(workspacePath, paper.sourcePath);
+```
+
 ---
 
 ## Runtime validation
