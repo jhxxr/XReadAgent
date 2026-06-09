@@ -151,6 +151,9 @@ the dedicated `release` job (`softprops/action-gh-release`), and the app ships *
 - **The Release workflow build steps (`pnpm dist`, `pnpm dist:mac`) MUST NOT pass `GH_TOKEN` /
   `GITHUB_TOKEN`** as env. That token is what triggers electron-builder's GitHub-publish mode.
 - The `release` job keeps using the default `GITHUB_TOKEN` — only the *build* steps must stay clean.
+- Release CI runs `uv sync --frozen`; any project version bump in `pyproject.toml` must be committed
+  with the matching editable `xreadagent` entry in `uv.lock`, or the release job can fail before
+  packaging begins.
 
 > **Gotcha — "Cannot detect repository by .git/config".** If `GH_TOKEN` is present **and** publish
 > is not disabled, electron-builder enters GitHub-publish mode during `afterPack`, tries to generate
