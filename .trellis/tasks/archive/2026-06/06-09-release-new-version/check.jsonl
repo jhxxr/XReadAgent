@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/electron/index.md", "reason": "Verify release workflow remains compliant with packaging/publish contract."}
+{"file": ".trellis/spec/backend/index.md", "reason": "Verify backend version metadata alignment and quality impact."}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Verify frontend package version alignment."}
+{"file": ".trellis/tasks/06-09-release-new-version/research/release-flow.md", "reason": "Check release acceptance criteria against researched flow."}
