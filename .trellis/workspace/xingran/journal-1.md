@@ -694,3 +694,37 @@ Enabled the workspace switcher and import actions in the renderer, added Electro
 ### Next Steps
 
 - None - task complete
+
+
+## Session 21: Complete PDF BabelDOC translation flow
+
+**Date**: 2026-06-09
+**Task**: Complete PDF BabelDOC translation flow
+**Branch**: `main`
+
+### Summary
+
+Completed the PDF import-to-reader-to-BabelDOC translation loop by exposing canonical source paths, wiring production translation services to websocket jobs, updating the reader to use archived PDF paths, documenting the cross-layer contracts, and verifying backend/frontend checks.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0b67abd` | (see git log) |
+| `17c9282` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

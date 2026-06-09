@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 20
-- **Last Active**: 2026-06-03
+- **Total Sessions**: 21
+- **Last Active**: 2026-06-09
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~696 | Active |
+| `journal-1.md` | ~730 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 21 | 2026-06-09 | Complete PDF BabelDOC translation flow | `0b67abd`, `17c9282` | `main` |
 | 20 | 2026-06-03 | Fix workspace import actions | `af1a204` | `main` |
 | 19 | 2026-06-01 | fix sidecar prod deps: add venv site-packages to PYTHONPATH | `53f80a2` | `main` |
 | 18 | 2026-05-31 | Release v0.0.2 and v0.0.3 | `ba4e324`, `d2c5f96`, `1ea263e`, `717dea4` | `main` |
