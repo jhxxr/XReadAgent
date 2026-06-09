@@ -728,3 +728,36 @@ Completed the PDF import-to-reader-to-BabelDOC translation loop by exposing cano
 ### Next Steps
 
 - None - task complete
+
+
+## Session 22: Publish v0.0.6 release
+
+**Date**: 2026-06-09
+**Task**: Publish v0.0.6 release
+**Branch**: `main`
+
+### Summary
+
+Bumped XReadAgent to 0.0.6, aligned backend/frontend/electron/uv lock versions, documented the uv.lock release contract, pushed main and v0.0.6, and verified the GitHub Release completed with the Windows installer artifact.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `46e939b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
