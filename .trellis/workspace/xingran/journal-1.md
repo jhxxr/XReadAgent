@@ -761,3 +761,36 @@ Bumped XReadAgent to 0.0.6, aligned backend/frontend/electron/uv lock versions, 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 23: Fix PDF import error details
+
+**Date**: 2026-06-10
+**Task**: Fix PDF import error details
+**Branch**: `main`
+
+### Summary
+
+Surfaced FastAPI sidecar error details in frontend ApiError messages so PDF import failures show actionable causes such as missing model configuration. Added regression tests and documented the error-detail propagation contract.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e3e371e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

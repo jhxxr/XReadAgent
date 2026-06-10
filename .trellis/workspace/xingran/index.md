@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 22
-- **Last Active**: 2026-06-09
+- **Total Sessions**: 23
+- **Last Active**: 2026-06-10
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~763 | Active |
+| `journal-1.md` | ~796 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 23 | 2026-06-10 | Fix PDF import error details | `e3e371e` | `main` |
 | 22 | 2026-06-09 | Publish v0.0.6 release | `46e939b` | `main` |
 | 21 | 2026-06-09 | Complete PDF BabelDOC translation flow | `0b67abd`, `17c9282` | `main` |
 | 20 | 2026-06-03 | Fix workspace import actions | `af1a204` | `main` |
