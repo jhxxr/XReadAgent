@@ -149,6 +149,61 @@ If a Phase 2 endpoint requires defensive parsing (e.g. user-uploaded JSON), intr
 
 Consumers narrow with `instanceof ApiError` (see `health-banner.tsx#selectState`). Never throw plain `Error` from `lib/api.ts`. Tests pin both `instanceof ApiError` and the `status` shape (see `tests/lib/api.test.ts`).
 
+### Scenario: Sidecar Error Detail Propagation
+
+#### 1. Scope / Trigger
+
+Applies to every `frontend/src/lib/api.ts` helper that throws `ApiError` for a non-2xx sidecar response. The sidecar often returns FastAPI-style JSON error bodies, and hiding that body turns actionable errors such as a missing model setting into an opaque status-code toast.
+
+#### 2. Signatures
+
+```typescript
+class ApiError extends Error {
+  readonly name = "ApiError";
+  constructor(message: string, readonly status: number);
+}
+```
+
+#### 3. Contracts
+
+- Network failure -> `ApiError(message, 0)`.
+- Non-2xx response -> `ApiError("Sidecar returned <status> on <path>[: <detail>]", status)`.
+- FastAPI string detail payloads (`{ "detail": "..." }`) must be appended to the message.
+- FastAPI validation detail arrays (`{ "detail": [{ "msg": "..." }] }`) must append the joined `msg` values.
+- Non-JSON or malformed error bodies fall back to the status/path message.
+
+#### 4. Validation & Error Matrix
+
+| Condition | `ApiError.message` |
+|---|---|
+| `fetch()` rejects | `Network error contacting sidecar at <url>: <cause>` |
+| `422` + `{ "detail": "No model specified" }` | `Sidecar returned 422 on /ingest: No model specified` |
+| `422` + validation array | `Sidecar returned 422 on /ingest: <msg>; <msg>` |
+| `503` + plain text body | `Sidecar returned 503 on <path>` |
+
+#### 5. Good/Base/Bad Cases
+
+- Good: Import toast shows `No model specified...` when `/ingest` rejects because settings and `XREAD_AGENT_MODEL` are both empty.
+- Base: Health check still shows `Sidecar returned 503 on /healthz` when the response is not JSON.
+- Bad: Throwing only `Sidecar returned 422 on /ingest`, which forces users to inspect sidecar logs for a normal validation error.
+
+#### 6. Tests Required
+
+- API client test for string `detail` payloads.
+- API client test for FastAPI validation array payloads.
+- API client test that non-JSON bodies keep the generic fallback.
+- Existing network-error test must keep asserting `status: 0`.
+
+#### 7. Wrong vs Correct
+
+```typescript
+// Wrong: drops the backend's actionable explanation.
+throw new ApiError(`Sidecar returned ${response.status} on ${path}`, response.status);
+
+// Correct: builds the same base message but appends parsed FastAPI detail.
+throw await buildApiError(response, path);
+```
+
 ---
 
 ## Common patterns

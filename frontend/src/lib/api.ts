@@ -48,6 +48,43 @@ export class ApiError extends Error {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function formatDetailValue(value: unknown): string | null {
+  if (typeof value === "string") {
+    return value.trim() || null;
+  }
+  if (Array.isArray(value)) {
+    const messages = value
+      .map((item) => (isRecord(item) && typeof item.msg === "string" ? item.msg : null))
+      .filter((message): message is string => Boolean(message?.trim()));
+    return messages.length > 0 ? messages.join("; ") : null;
+  }
+  if (isRecord(value)) {
+    const message = value.message ?? value.msg ?? value.error;
+    return typeof message === "string" ? message.trim() || null : null;
+  }
+  return null;
+}
+
+async function buildApiError(response: Response, path: string): Promise<ApiError> {
+  let detail: string | null = null;
+  try {
+    const raw = await response.text();
+    if (raw.trim()) {
+      const body = JSON.parse(raw) as unknown;
+      detail = isRecord(body) ? formatDetailValue(body.detail) : formatDetailValue(body);
+    }
+  } catch {
+    detail = null;
+  }
+
+  const base = `Sidecar returned ${response.status} on ${path}`;
+  return new ApiError(detail ? `${base}: ${detail}` : base, response.status);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getApiBase();
   const url = `${base}${path}`;
@@ -68,7 +105,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
-    throw new ApiError(`Sidecar returned ${response.status} on ${path}`, response.status);
+    throw await buildApiError(response, path);
   }
 
   return (await response.json()) as T;
@@ -95,7 +132,7 @@ export async function getHealthz(): Promise<HealthzResponse> {
     );
   }
   if (!response.ok) {
-    throw new ApiError(`Sidecar returned ${response.status} on /healthz`, response.status);
+    throw await buildApiError(response, "/healthz");
   }
   return (await response.json()) as HealthzResponse;
 }
@@ -124,10 +161,7 @@ export async function getTranslationsManifest(
     return { version: 1, entries: [] };
   }
   if (!response.ok) {
-    throw new ApiError(
-      `Sidecar returned ${response.status} on /translations/manifest`,
-      response.status,
-    );
+    throw await buildApiError(response, "/translations/manifest");
   }
   return (await response.json()) as TranslationsManifest;
 }

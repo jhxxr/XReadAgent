@@ -20,6 +20,19 @@ import {
   putSettings,
 } from "@/lib/api";
 
+async function expectApiError(promise: Promise<unknown>): Promise<ApiError> {
+  try {
+    await promise;
+  } catch (error) {
+    expect(error).toBeInstanceOf(ApiError);
+    if (error instanceof ApiError) {
+      return error;
+    }
+    throw error;
+  }
+  throw new Error("Expected API call to reject with ApiError");
+}
+
 describe("api client", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -52,7 +65,60 @@ describe("api client", () => {
   it("throws an ApiError on non-2xx responses", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("nope", { status: 503 }));
 
-    await expect(getHealthz()).rejects.toBeInstanceOf(ApiError);
+    const error = await expectApiError(getHealthz());
+    expect(error.message).toBe("Sidecar returned 503 on /healthz");
+    expect(error.status).toBe(503);
+  });
+
+  it("includes FastAPI detail text in ApiError messages", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          detail:
+            "No model specified. Pass `model` in the request body, configure it in settings.",
+        }),
+        {
+          status: 422,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    const error = await expectApiError(
+      postIngest({
+        workspacePath: "/tmp/ws",
+        filePath: "/tmp/paper.pdf",
+      }),
+    );
+    expect(error.name).toBe("ApiError");
+    expect(error.message).toContain("No model specified");
+    expect(error.status).toBe(422);
+  });
+
+  it("formats FastAPI validation detail arrays in ApiError messages", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          detail: [
+            { loc: ["body", "workspacePath"], msg: "Field required", type: "missing" },
+            { loc: ["body", "filePath"], msg: "Field required", type: "missing" },
+          ],
+        }),
+        {
+          status: 422,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    const error = await expectApiError(
+      postIngest({
+        workspacePath: "",
+        filePath: "",
+      }),
+    );
+    expect(error.message).toContain("Field required; Field required");
+    expect(error.status).toBe(422);
   });
 
   it("wraps network errors as ApiError with status 0", async () => {
