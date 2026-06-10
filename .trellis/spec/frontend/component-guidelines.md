@@ -56,6 +56,16 @@ Don't accept `style={...}` props through your APIs — utility classes via `clas
 
 **Tailwind 4 + `cn()` + CVA**. There is no CSS module, no styled-components, no inline `style` (except dynamic, like `colorScheme` in `theme.tsx`).
 
+### Desktop App UX, Not Website UX
+
+XReadAgent is a desktop application renderer, not a public website or marketing
+page. New screens should feel like app/tool surfaces: clear navigation,
+discoverable settings, compact information hierarchy, predictable controls, and
+workflow-first layouts. Avoid landing-page patterns such as hero sections,
+marketing cards, oversized promotional copy, decorative backgrounds, or
+page-length storytelling unless the product explicitly needs an onboarding
+surface.
+
 ### The `cn` helper
 
 `cn(...inputs: ClassValue[])` (`frontend/src/lib/utils.ts`) is `twMerge(clsx(...))`. Use it everywhere class lists are conditional or extensible — even for "just one class" if a `className` prop is being merged.
