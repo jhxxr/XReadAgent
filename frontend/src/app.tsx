@@ -6,6 +6,7 @@ import { useEffect } from "react";
 
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { LanguageProvider } from "@/lib/i18n";
 import { onDeepLink, onMenuNavigate, onOpenWorkspace } from "@/lib/platform";
 import { ThemeProvider } from "@/lib/theme";
 import { router } from "@/router";
@@ -28,10 +29,12 @@ export function AppProviders({ children }: AppProvidersProps) {
   return (
     <ThemeProvider defaultTheme="system">
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider delayDuration={200}>
-          {children}
-          <Toaster position="bottom-right" richColors />
-        </TooltipProvider>
+        <LanguageProvider>
+          <TooltipProvider delayDuration={200}>
+            {children}
+            <Toaster position="bottom-right" richColors />
+          </TooltipProvider>
+        </LanguageProvider>
       </QueryClientProvider>
     </ThemeProvider>
   );

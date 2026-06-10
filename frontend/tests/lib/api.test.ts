@@ -74,8 +74,7 @@ describe("api client", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          detail:
-            "No model specified. Pass `model` in the request body, configure it in settings.",
+          detail: "No model specified. Pass `model` in the request body, configure it in settings.",
         }),
         {
           status: 422,
@@ -381,7 +380,7 @@ describe("api client", () => {
   // ---------------------------------------------------------------------------
 
   it("fetches current settings via GET /settings", async () => {
-    const settings = { model: "openai:gpt-4o", workspacePath: "/tmp/ws" };
+    const settings = { model: "openai:gpt-4o", workspacePath: "/tmp/ws", language: "zh" };
     const mockFetch = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify(settings), {
         status: 200,
@@ -400,7 +399,11 @@ describe("api client", () => {
   });
 
   it("updates settings via PUT /settings", async () => {
-    const saved = { model: "anthropic:claude-3-7-sonnet-latest", workspacePath: "/new/ws" };
+    const saved = {
+      model: "anthropic:claude-3-7-sonnet-latest",
+      workspacePath: "/new/ws",
+      language: "zh",
+    };
     const mockFetch = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify(saved), {
         status: 200,
@@ -408,7 +411,10 @@ describe("api client", () => {
       }),
     );
 
-    const result = await putSettings({ model: "anthropic:claude-3-7-sonnet-latest" });
+    const result = await putSettings({
+      model: "anthropic:claude-3-7-sonnet-latest",
+      language: "zh",
+    });
     expect(result).toEqual(saved);
     const call = mockFetch.mock.calls[0];
     expect(call).toBeDefined();

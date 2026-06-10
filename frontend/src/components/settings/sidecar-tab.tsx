@@ -1,15 +1,30 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import {
+  AlertTriangleIcon,
+  CheckCircle2Icon,
+  CopyIcon,
+  Loader2Icon,
+  RefreshCwIcon,
+  ServerIcon,
+  XCircleIcon,
+  type LucideIcon,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangleIcon, CheckCircle2Icon, CopyIcon, Loader2Icon, RefreshCwIcon, ServerIcon, XCircleIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useI18n, type TranslationKey } from "@/lib/i18n";
 import { getElectronAPI, isElectron, onSidecarRestarting } from "@/lib/platform";
 import type { SidecarRestartInfo, SidecarStatus } from "@/types/electron";
 
-/** Status tone mapping for the badge. */
 const STATUS_TONE: Record<
   SidecarStatus["status"],
   "success" | "warning" | "destructive" | "secondary"
@@ -21,15 +36,15 @@ const STATUS_TONE: Record<
   crashed: "destructive",
 };
 
-const STATUS_LABEL: Record<SidecarStatus["status"], string> = {
-  running: "Running",
-  starting: "Starting",
-  idle: "Idle",
-  stopped: "Stopped",
-  crashed: "Crashed",
+const STATUS_LABEL_KEY: Record<SidecarStatus["status"], TranslationKey> = {
+  running: "settings.sidecar.status.running",
+  starting: "settings.sidecar.status.starting",
+  idle: "settings.sidecar.status.idle",
+  stopped: "settings.sidecar.status.stopped",
+  crashed: "settings.sidecar.status.crashed",
 };
 
-const STATUS_ICON: Record<SidecarStatus["status"], typeof CheckCircle2Icon | null> = {
+const STATUS_ICON: Record<SidecarStatus["status"], LucideIcon | null> = {
   running: CheckCircle2Icon,
   starting: Loader2Icon,
   idle: null,
@@ -37,11 +52,6 @@ const STATUS_ICON: Record<SidecarStatus["status"], typeof CheckCircle2Icon | nul
   crashed: AlertTriangleIcon,
 };
 
-/**
- * SidecarTab shows the current sidecar process status, logs, and a restart
- * button. Only renders meaningful content inside Electron — in browser dev
- * mode, it shows a placeholder notice.
- */
 export function SidecarTab() {
   if (!isElectron()) {
     return <BrowserModeNotice />;
@@ -50,23 +60,23 @@ export function SidecarTab() {
 }
 
 function BrowserModeNotice() {
+  const { t } = useI18n();
+
   return (
-    <Card>
+    <Card className="rounded-md shadow-none">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <ServerIcon className="size-4" />
-          Sidecar
+          {t("settings.sidecar.browserTitle")}
         </CardTitle>
-        <CardDescription>
-          The sidecar status panel is only available when running inside the Electron desktop app.
-          In browser dev mode, the Python sidecar runs separately on localhost:8765.
-        </CardDescription>
+        <CardDescription>{t("settings.sidecar.browserDescription")}</CardDescription>
       </CardHeader>
     </Card>
   );
 }
 
 function SidecarPanel() {
+  const { t } = useI18n();
   const api = getElectronAPI();
 
   const [status, setStatus] = useState<SidecarStatus | null>(null);
@@ -87,9 +97,9 @@ function SidecarPanel() {
       setStatus(result);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to query sidecar status");
+      setError(err instanceof Error ? err.message : t("settings.sidecar.queryFailed"));
     }
-  }, [api]);
+  }, [api, t]);
 
   const fetchLogs = useCallback(async () => {
     if (!api) return;
@@ -118,10 +128,9 @@ function SidecarPanel() {
     try {
       await api.restartSidecar();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Restart failed");
+      setError(err instanceof Error ? err.message : t("settings.sidecar.restartFailed"));
     } finally {
       setRestarting(false);
-      // Refresh status after restart attempt.
       await fetchStatus();
     }
   };
@@ -133,11 +142,10 @@ function SidecarPanel() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Clipboard access denied — ignore.
+      // Clipboard access denied; ignore.
     }
   };
 
-  // Poll sidecar status every 3 seconds.
   useEffect(() => {
     const poll = () => {
       void fetchStatus();
@@ -150,18 +158,15 @@ function SidecarPanel() {
     };
   }, [fetchStatus, fetchLogs]);
 
-  // Listen for sidecar restart events from the main process.
   useEffect(() => {
     const cleanup = onSidecarRestarting((info) => {
       setRestartInfo(info);
       setRestartCountdown(Math.ceil(info.delayMs / 1000));
 
-      // Clear any existing countdown.
       if (countdownRef.current) {
         clearInterval(countdownRef.current);
       }
 
-      // Start a countdown timer.
       countdownRef.current = setInterval(() => {
         setRestartCountdown((prev) => {
           if (prev === null || prev <= 1) {
@@ -175,17 +180,14 @@ function SidecarPanel() {
         });
       }, 1000);
 
-      // Re-fetch status to show the restarting state.
       void fetchStatus();
     });
 
-    // Also fetch restart info on mount.
     void fetchRestartInfo();
 
     return cleanup;
   }, [fetchStatus, fetchRestartInfo]);
 
-  // Clean up the countdown interval on unmount.
   useEffect(() => {
     return () => {
       if (countdownRef.current) {
@@ -195,7 +197,6 @@ function SidecarPanel() {
     };
   }, []);
 
-  // Clear restart info when sidecar is running.
   useEffect(() => {
     if (status?.status === "running" && restartInfo) {
       setRestartInfo(null);
@@ -203,7 +204,6 @@ function SidecarPanel() {
     }
   }, [status?.status, restartInfo]);
 
-  // Auto-scroll logs to the bottom when new lines arrive.
   useEffect(() => {
     const el = logScrollRef.current;
     if (el) {
@@ -217,10 +217,8 @@ function SidecarPanel() {
 
   const currentStatus = status?.status ?? "idle";
   const badgeVariant = STATUS_TONE[currentStatus];
-  const badgeLabel = STATUS_LABEL[currentStatus];
+  const badgeLabel = t(STATUS_LABEL_KEY[currentStatus]);
   const StatusIcon = STATUS_ICON[currentStatus];
-
-  // Determine if the restart button should be disabled.
   const isRestartDisabled =
     restarting ||
     currentStatus === "starting" ||
@@ -228,20 +226,18 @@ function SidecarPanel() {
 
   return (
     <div className="space-y-4">
-      <Card>
+      <Card className="rounded-md shadow-none">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <ServerIcon className="size-4" />
-            Sidecar Process
+            {t("settings.sidecar.processTitle")}
           </CardTitle>
-          <CardDescription>
-            Python backend process that powers ingestion, queries, and translation.
-          </CardDescription>
+          <CardDescription>{t("settings.sidecar.processDescription")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
             <div className="flex items-center gap-3">
-              <span className="text-sm font-medium">Status</span>
+              <span className="text-sm font-medium">{t("settings.sidecar.status")}</span>
               <Badge variant={badgeVariant} className="gap-1.5">
                 {StatusIcon && currentStatus === "starting" ? (
                   <StatusIcon className="size-3 animate-spin" />
@@ -252,29 +248,32 @@ function SidecarPanel() {
               </Badge>
               {restartInfo && restartCountdown !== null && (
                 <span className="text-warning text-xs">
-                  Restart attempt {restartInfo.attempt}/{restartInfo.maxAttempts}
-                  {restartCountdown > 0 ? ` — starting in ${restartCountdown}s` : " — starting..."}
+                  {t("settings.sidecar.restartAttempt")} {restartInfo.attempt}/
+                  {restartInfo.maxAttempts}
+                  {restartCountdown > 0
+                    ? ` - ${t("settings.sidecar.startingIn")} ${restartCountdown}s`
+                    : ` - ${t("settings.sidecar.startingSoon")}`}
                 </span>
               )}
             </div>
 
             {status?.pid != null && (
               <div className="flex items-center gap-3">
-                <span className="text-sm font-medium">PID</span>
+                <span className="text-sm font-medium">{t("settings.sidecar.pid")}</span>
                 <span className="text-muted-foreground font-mono text-sm">{status.pid}</span>
               </div>
             )}
 
             {status?.port != null && (
               <div className="flex items-center gap-3">
-                <span className="text-sm font-medium">Port</span>
+                <span className="text-sm font-medium">{t("settings.sidecar.port")}</span>
                 <span className="text-muted-foreground font-mono text-sm">{status.port}</span>
               </div>
             )}
 
             {status?.startedAt && (
               <div className="flex items-center gap-3">
-                <span className="text-sm font-medium">Started</span>
+                <span className="text-sm font-medium">{t("settings.sidecar.started")}</span>
                 <span className="text-muted-foreground text-sm">
                   {new Date(status.startedAt).toLocaleString()}
                 </span>
@@ -283,8 +282,10 @@ function SidecarPanel() {
 
             {status?.restartCount != null && status.restartCount > 0 && (
               <div className="flex items-center gap-3">
-                <span className="text-sm font-medium">Restarts</span>
-                <span className="text-warning text-sm">{status.restartCount} auto-restart(s) this session</span>
+                <span className="text-sm font-medium">{t("settings.sidecar.restarts")}</span>
+                <span className="text-warning text-sm">
+                  {status.restartCount} {t("settings.sidecar.autoRestartSuffix")}
+                </span>
               </div>
             )}
 
@@ -307,18 +308,20 @@ function SidecarPanel() {
               className="gap-2"
             >
               <RefreshCwIcon className={`size-4 ${restarting ? "animate-spin" : ""}`} />
-              {restarting ? "Restarting..." : "Restart Sidecar"}
+              {restarting
+                ? t("settings.sidecar.restarting")
+                : t("settings.sidecar.restartSidecar")}
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-md shadow-none">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-base">Logs</CardTitle>
-              <CardDescription>Recent sidecar stdout and stderr output.</CardDescription>
+              <CardTitle className="text-base">{t("settings.sidecar.logs")}</CardTitle>
+              <CardDescription>{t("settings.sidecar.logsDescription")}</CardDescription>
             </div>
             <Button
               variant="ghost"
@@ -328,15 +331,18 @@ function SidecarPanel() {
               disabled={logs.length === 0}
             >
               <CopyIcon className="size-3" />
-              {copied ? "Copied" : "Copy"}
+              {copied ? t("settings.sidecar.copied") : t("settings.sidecar.copy")}
             </Button>
           </div>
         </CardHeader>
         <CardContent>
           <ScrollArea className="h-64 w-full rounded-md border">
-            <div ref={logScrollRef} className="bg-muted/50 p-3 font-mono text-xs leading-relaxed">
+            <div
+              ref={logScrollRef}
+              className="bg-muted/50 p-3 font-mono text-xs leading-relaxed"
+            >
               {logs.length === 0 ? (
-                <span className="text-muted-foreground">No logs yet.</span>
+                <span className="text-muted-foreground">{t("settings.sidecar.noLogs")}</span>
               ) : (
                 logs.map((line, i) => (
                   <div key={i} className="whitespace-pre-wrap break-all">

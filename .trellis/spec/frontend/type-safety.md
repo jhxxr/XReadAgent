@@ -204,6 +204,98 @@ throw new ApiError(`Sidecar returned ${response.status} on ${path}`, response.st
 throw await buildApiError(response, path);
 ```
 
+### Scenario: Settings UI Language Preference
+
+#### 1. Scope / Trigger
+
+Any change that reads, writes, or renders the persisted application settings
+contract. The `language` field is a backend -> frontend -> UI state round-trip:
+the Python sidecar owns validation and persistence, while the renderer mirrors
+the type and applies the preference through the language provider.
+
+#### 2. Signatures
+
+```typescript
+export type AppLanguage = "en" | "zh";
+
+export interface AppSettings {
+  model: string;
+  workspacePath: string;
+  language: AppLanguage;
+}
+
+export interface UpdateSettingsRequest {
+  model?: string;
+  workspacePath?: string;
+  language?: AppLanguage;
+}
+```
+
+Backend mirror:
+
+```python
+AppLanguage = Literal["en", "zh"]
+
+class AppSettings(_Strict):
+    model: str = ""
+    workspacePath: str = ""
+    language: AppLanguage = "zh"
+```
+
+#### 3. Contracts
+
+- `GET /api/settings` always returns `language`.
+- Missing settings files and legacy settings JSON without `language` default to
+  `"zh"`.
+- `PUT /api/settings` accepts partial updates; omitted fields preserve the
+  current setting.
+- The renderer may cache `xreadagent.language` in `localStorage` for fast first
+  paint, but the backend settings file remains canonical.
+- The renderer must update the TanStack Query `["settings"]` cache after a
+  successful language save.
+
+#### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+|---|---|
+| Missing settings file | `GET /api/settings` returns `language: "zh"` |
+| Legacy JSON has only `model` and `workspacePath` | Load succeeds with `language: "zh"` |
+| `PUT /api/settings` with `language: "en"` or `"zh"` | Saves and returns merged settings |
+| `PUT /api/settings` with `language: "fr"` | FastAPI returns 422 via Pydantic validation |
+| LocalStorage has an invalid language value | Renderer ignores it and falls back to the provider default |
+
+#### 5. Good/Base/Bad Cases
+
+- Good: first launch with no settings file renders Chinese chrome and settings
+  labels, then persists language changes through `/api/settings`.
+- Base: an existing user with a two-field settings file gets the same model and
+  workspace path plus `language: "zh"`.
+- Bad: adding a frontend-only language preference that never reaches
+  `/api/settings`; desktop restarts would silently lose the user's choice.
+
+#### 6. Tests Required
+
+- Backend settings tests assert default, legacy-file load, merge, persistence,
+  invalid language rejection, and API round-trip behavior.
+- API client tests include `language` in the `getSettings` and `putSettings`
+  fixtures.
+- Renderer tests assert default Chinese labels and a successful switch to
+  English or Chinese through the settings UI.
+- Provider tests assert localStorage cache writes and query-cache reconciliation
+  after save.
+
+#### 7. Wrong vs Correct
+
+```typescript
+// Wrong: frontend-only preference diverges from the settings API.
+window.localStorage.setItem("xreadagent.language", "en");
+
+// Correct: optimistic local cache plus canonical sidecar persistence.
+setLanguageState(nextLanguage);
+writeStoredLanguage(nextLanguage);
+putSettings({ language: nextLanguage });
+```
+
 ---
 
 ## Common patterns

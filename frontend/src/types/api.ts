@@ -215,14 +215,19 @@ export interface QueryResultResponse {
 // Settings API types
 // ---------------------------------------------------------------------------
 
+/** Supported renderer UI languages persisted through `/api/settings`. */
+export type AppLanguage = "en" | "zh";
+
 /** Response shape for `GET /api/settings`. */
 export interface AppSettings {
   model: string;
   workspacePath: string;
+  language: AppLanguage;
 }
 
 /** Body of `PUT /api/settings` — partial update. */
 export interface UpdateSettingsRequest {
   model?: string;
   workspacePath?: string;
+  language?: AppLanguage;
 }

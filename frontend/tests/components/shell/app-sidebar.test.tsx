@@ -13,7 +13,20 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppSidebar } from "@/components/shell/app-sidebar";
+import { LanguageProvider } from "@/lib/i18n";
 import { ThemeProvider } from "@/lib/theme";
+
+const { getSettings, postIngest, putSettings } = vi.hoisted(() => ({
+  getSettings: vi.fn(),
+  postIngest: vi.fn(),
+  putSettings: vi.fn(),
+}));
+
+vi.mock("@/lib/api", () => ({
+  getSettings,
+  postIngest,
+  putSettings,
+}));
 
 /** Re-install the matchMedia stub that afterEach/restoreAllMocks tears down. */
 function stubMatchMedia() {
@@ -72,19 +85,16 @@ function renderSidebar(initialPath = "/workspace") {
   });
 
   const router = createRouter({
-    routeTree: rootRoute.addChildren([
-      workspaceRoute,
-      paperRoute,
-      queriesRoute,
-      settingsRoute,
-    ]),
+    routeTree: rootRoute.addChildren([workspaceRoute, paperRoute, queriesRoute, settingsRoute]),
     history: createMemoryHistory({ initialEntries: [initialPath] }),
   });
 
   return render(
     <ThemeProvider defaultTheme="light">
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <LanguageProvider>
+          <RouterProvider router={router} />
+        </LanguageProvider>
       </QueryClientProvider>
     </ThemeProvider>,
   );
@@ -134,6 +144,9 @@ describe("AppSidebar", () => {
       value: undefined,
       writable: true,
     });
+    getSettings.mockResolvedValue({ model: "", workspacePath: "", language: "zh" });
+    putSettings.mockResolvedValue({ model: "", workspacePath: "", language: "zh" });
+    postIngest.mockResolvedValue({ title: "Paper" });
     stubMatchMedia();
   });
 
@@ -146,31 +159,30 @@ describe("AppSidebar", () => {
   it("renders all navigation links", async () => {
     renderSidebar();
 
-    expect(await screen.findByRole("link", { name: /workspace/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /papers/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /queries/i })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /工作区/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /论文/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /问答/ })).toBeInTheDocument();
   });
 
   it("renders the Settings link", async () => {
     renderSidebar();
 
-    expect(await screen.findByRole("link", { name: /settings/i })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /设置/ })).toBeInTheDocument();
   });
 
   it("renders the workspace switcher label", async () => {
     renderSidebar();
 
-    // The workspace switcher is a button with data-slot="workspace-switcher"
-    // that contains a small uppercase "Workspace" label.
-    const switcher = await screen.findByRole("button", { name: /workspace/i });
+    // The workspace switcher is a button with data-slot="workspace-switcher".
+    const switcher = await screen.findByRole("button", { name: /工作区/i });
     expect(switcher).toHaveAttribute("data-slot", "workspace-switcher");
-    expect(switcher).toHaveTextContent("Workspace");
+    expect(switcher).toHaveTextContent("工作区");
   });
 
   it("renders the default workspace name", async () => {
     renderSidebar();
 
-    expect(await screen.findByText("Default")).toBeInTheDocument();
+    expect(await screen.findByText("默认")).toBeInTheDocument();
   });
 
   it("opens the native workspace picker from the switcher", async () => {
@@ -178,7 +190,7 @@ describe("AppSidebar", () => {
     const user = userEvent.setup();
     renderSidebar();
 
-    await user.click(await screen.findByRole("button", { name: /workspace default/i }));
+    await user.click(await screen.findByRole("button", { name: /工作区 默认/i }));
 
     expect(api.showOpenFolderDialog).toHaveBeenCalledWith("Open Workspace");
     expect(window.localStorage.getItem("xreadagent.workspacePath")).toBe("/tmp/ws");

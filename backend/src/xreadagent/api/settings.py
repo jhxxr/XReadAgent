@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -17,6 +18,8 @@ from xreadagent.wiki.atomic import atomic_write_bytes
 
 _SETTINGS_DIR = Path.home() / ".xreadagent"
 _SETTINGS_FILE = _SETTINGS_DIR / "settings.json"
+
+AppLanguage = Literal["en", "zh"]
 
 
 class _Strict(BaseModel):
@@ -28,6 +31,7 @@ class AppSettings(_Strict):
 
     model: str = ""
     workspacePath: str = ""
+    language: AppLanguage = "zh"
 
 
 class UpdateSettingsRequest(_Strict):
@@ -35,6 +39,7 @@ class UpdateSettingsRequest(_Strict):
 
     model: str | None = None
     workspacePath: str | None = None
+    language: AppLanguage | None = None
 
 
 def load_settings() -> AppSettings:
@@ -62,4 +67,6 @@ def merge_settings(current: AppSettings, update: UpdateSettingsRequest) -> AppSe
         data["model"] = update.model
     if update.workspacePath is not None:
         data["workspacePath"] = update.workspacePath
+    if update.language is not None:
+        data["language"] = update.language
     return AppSettings.model_validate(data)

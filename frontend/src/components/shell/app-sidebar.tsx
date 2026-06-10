@@ -14,24 +14,26 @@ import { Button } from "@/components/ui/button";
 import { useWorkspaceActions } from "@/lib/use-workspace-actions";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { useI18n, type TranslationKey } from "@/lib/i18n";
 
 interface NavItem {
   to: string;
-  label: string;
+  labelKey: TranslationKey;
   icon: LucideIcon;
 }
 
 const NAV_ITEMS: readonly NavItem[] = [
-  { to: "/workspace", label: "Workspace", icon: LayoutDashboardIcon },
-  { to: "/paper", label: "Papers", icon: LibraryBigIcon },
-  { to: "/queries", label: "Queries", icon: MessagesSquareIcon },
+  { to: "/workspace", labelKey: "nav.workspace", icon: LayoutDashboardIcon },
+  { to: "/paper", labelKey: "nav.papers", icon: LibraryBigIcon },
+  { to: "/queries", labelKey: "nav.queries", icon: MessagesSquareIcon },
 ] as const;
 
 export function AppSidebar() {
+  const { t } = useI18n();
   const router = useRouterState();
   const pathname = router.location.pathname;
   const { selectWorkspace, workspacePath } = useWorkspaceActions();
-  const workspaceLabel = workspacePath.trim() || "Default";
+  const workspaceLabel = workspacePath.trim() || t("nav.defaultWorkspace");
 
   return (
     <aside className="bg-sidebar text-sidebar-foreground border-sidebar-border flex h-full w-[260px] flex-col border-r">
@@ -57,7 +59,7 @@ export function AppSidebar() {
         >
           <div className="flex flex-col">
             <span className="text-muted-foreground text-[0.7rem] uppercase tracking-wider">
-              Workspace
+              {t("nav.workspace")}
             </span>
             <span className="truncate font-medium">{workspaceLabel}</span>
           </div>
@@ -69,7 +71,8 @@ export function AppSidebar() {
 
       <nav className="flex-1 px-2 py-3">
         <ul className="flex flex-col gap-0.5">
-          {NAV_ITEMS.map(({ to, label, icon: Icon }) => {
+          {NAV_ITEMS.map(({ to, labelKey, icon: Icon }) => {
+            const label = t(labelKey);
             const active =
               pathname === to ||
               (to !== "/workspace" && pathname.startsWith(to)) ||
@@ -105,7 +108,7 @@ export function AppSidebar() {
         >
           <Link to="/settings">
             <SettingsIcon className="size-4" />
-            Settings
+            {t("nav.settings")}
           </Link>
         </Button>
       </div>
