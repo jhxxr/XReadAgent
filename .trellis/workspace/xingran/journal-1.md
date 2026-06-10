@@ -794,3 +794,36 @@ Surfaced FastAPI sidecar error details in frontend ApiError messages so PDF impo
 ### Next Steps
 
 - None - task complete
+
+
+## Session 24: Release v0.0.7
+
+**Date**: 2026-06-10
+**Task**: Release v0.0.7
+**Branch**: `main`
+
+### Summary
+
+Bumped XReadAgent version metadata to 0.0.7, pushed main and annotated tag v0.0.7, verified the tag-triggered GitHub Release workflow succeeded, and confirmed the Windows installer asset was published.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `106037c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
