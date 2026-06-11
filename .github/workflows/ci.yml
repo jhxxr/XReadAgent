@@ -112,7 +112,9 @@ jobs:
   e2e:
     name: E2E (sidecar lifecycle)
     runs-on: ubuntu-latest
-    needs: [backend, frontend, electron]
+    # Only gates on the layers it actually exercises (Python sidecar spawned
+    # from the electron test harness). The frontend job is independent.
+    needs: [backend, electron]
     steps:
       - uses: actions/checkout@v6
 
@@ -131,6 +133,8 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 20
+          cache: pnpm
+          cache-dependency-path: electron/pnpm-lock.yaml
 
       - name: Install backend dependencies
         run: uv sync --frozen

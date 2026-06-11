@@ -19,6 +19,19 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # Fail fast when the pushed tag does not match the project version.
+      # Versions are bumped via `node scripts/bump-version.mjs <version>`.
+      - name: Verify tag matches pyproject.toml version
+        shell: bash
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          file_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -n1)"
+          if [ "$tag_version" != "$file_version" ]; then
+            echo "::error::Tag v${tag_version} does not match pyproject.toml version ${file_version}. Run scripts/bump-version.mjs and re-tag."
+            exit 1
+          fi
+          echo "Tag v${tag_version} matches pyproject.toml version."
+
       - uses: pnpm/action-setup@v6
         with:
           version: 10.34.1
@@ -27,7 +40,9 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-          cache-dependency-path: electron/pnpm-lock.yaml
+          cache-dependency-path: |
+            frontend/pnpm-lock.yaml
+            electron/pnpm-lock.yaml
 
       - name: Install uv
         uses: astral-sh/setup-uv@v8.1.0
@@ -37,15 +52,34 @@ jobs:
         with:
           python-version: "3.12"
 
+      # The python-build-standalone archive (~40 MB) is keyed on the bundler
+      # script — PYTHON_VERSION / PYTHON_RELEASE_TAG live there, so any bump
+      # invalidates the cache. bundle-python.mjs skips the download when the
+      # archive is already present.
+      - name: Cache python-build-standalone archive
+        uses: actions/cache@v4
+        with:
+          path: electron/resources/cpython-*.tar.gz
+          key: cpython-archive-${{ runner.os }}-${{ hashFiles('electron/scripts/bundle-python.mjs') }}
+
+      - name: Cache Electron binaries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: electron-cache-${{ runner.os }}-${{ hashFiles('electron/pnpm-lock.yaml') }}
+
       - name: Install frontend dependencies
         run: cd frontend && pnpm install --frozen-lockfile
 
       - name: Install electron dependencies
         run: cd electron && pnpm install --frozen-lockfile
 
-      - name: Install backend dependencies
-        run: uv sync --frozen
-
+      # NOTE: no `uv sync` here on purpose. The root .venv is never used by the
+      # packaging pipeline — bundle-python.mjs creates its own venv and installs
+      # the locked dependency set via `uv export --locked`, which also fails
+      # fast when uv.lock is out of sync with pyproject.toml.
       - name: Bundle Python
         run: cd electron && pnpm pack:python
 
@@ -79,7 +113,9 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-          cache-dependency-path: electron/pnpm-lock.yaml
+          cache-dependency-path: |
+            frontend/pnpm-lock.yaml
+            electron/pnpm-lock.yaml
 
       - name: Install uv
         uses: astral-sh/setup-uv@v8.1.0
@@ -89,15 +125,27 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Cache python-build-standalone archive
+        uses: actions/cache@v4
+        with:
+          path: electron/resources/cpython-*.tar.gz
+          key: cpython-archive-${{ runner.os }}-${{ hashFiles('electron/scripts/bundle-python.mjs') }}
+
+      - name: Cache Electron binaries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: electron-cache-${{ runner.os }}-${{ hashFiles('electron/pnpm-lock.yaml') }}
+
       - name: Install frontend dependencies
         run: cd frontend && pnpm install --frozen-lockfile
 
       - name: Install electron dependencies
         run: cd electron && pnpm install --frozen-lockfile
 
-      - name: Install backend dependencies
-        run: uv sync --frozen
-
+      # No `uv sync` — see the Windows job note.
       - name: Bundle Python
         run: cd electron && pnpm pack:python
 
