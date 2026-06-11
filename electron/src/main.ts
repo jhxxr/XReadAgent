@@ -4,9 +4,10 @@
  * application menu, native integrations, and deep link / file association handling.
  *
  * Architecture:
- * - Spawns the Python sidecar on app start
- * - Shows a splash window while the sidecar starts
- * - Loads the React UI once the sidecar is healthy
+ * - Creates the main window immediately on app start (loading screen)
+ * - Spawns the Python sidecar in parallel — window creation never blocks on it
+ * - Loads the React UI into the main window once the sidecar is healthy
+ * - Shows an in-window error state (with retry) if the sidecar fails to start
  * - Hides to system tray on window close (doesn't kill the sidecar)
  * - Cleans up the sidecar on app quit
  * - Handles `xread://` deep links and `.xread` file associations
@@ -19,7 +20,8 @@ import { parseDeepLink, parseXreadFile } from "./deeplink";
 import { installExternalLinkHandlers } from "./external-links";
 import { buildApplicationMenu } from "./menu";
 import { SidecarManager, resolveSidecarPaths } from "./sidecar";
-import { SPLASH_HTML, SPLASH_HEIGHT, SPLASH_WIDTH } from "./splash";
+import { SPLASH_HTML } from "./splash";
+import { isRendererUrl, resolveRendererUrl } from "./startup";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -33,7 +35,6 @@ const VITE_DEV_URL = "http://localhost:5173";
 // ---------------------------------------------------------------------------
 
 let mainWindow: BrowserWindow | null = null;
-let splashWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 
 /** Sidecar manager instance — initialized with placeholder pythonPath, updated on app ready. */
@@ -47,6 +48,13 @@ const sidecarManager = new SidecarManager(
 let sidecarPort = 0;
 let isQuitting = false;
 
+/**
+ * Most recent fatal sidecar startup error, or null. Kept so a freshly
+ * (re-)created window that is still on the loading screen can show the error
+ * state instead of spinning forever.
+ */
+let lastSidecarError: string | null = null;
+
 /** Pending deep link URL or file path received before the main window is ready. */
 let pendingDeepLink: string | null = null;
 let pendingFileOpen: string | null = null;
@@ -55,7 +63,7 @@ let pendingFileOpen: string | null = null;
 // App lifecycle
 // ---------------------------------------------------------------------------
 
-app.whenReady().then(async () => {
+app.whenReady().then(() => {
   const paths = resolveSidecarPaths(app);
   sidecarManager.setPythonPath(paths.pythonPath);
   if (paths.venvPath || paths.backendPath || paths.frontendPath) {
@@ -68,7 +76,11 @@ app.whenReady().then(async () => {
 
   createTray();
   setApplicationMenu();
-  await showSplashAndStartSidecar();
+
+  // Create + show the window immediately (loading screen) and start the
+  // sidecar in parallel — window creation never blocks on Python startup.
+  createMainWindow();
+  void startSidecarAndLoadApp();
 });
 
 // Prevent the default "quit when all windows are closed" behavior.
@@ -84,7 +96,9 @@ app.on("before-quit", async () => {
 
 app.on("activate", () => {
   // macOS: re-create window when dock icon is clicked and no windows are open.
-  if (BrowserWindow.getAllWindows().length === 0 && sidecarPort > 0) {
+  // Safe even while the sidecar is still starting — the window shows the
+  // loading screen until `startSidecarAndLoadApp` swaps in the renderer.
+  if (BrowserWindow.getAllWindows().length === 0) {
     createMainWindow();
   }
 });
@@ -147,30 +161,61 @@ if (process.platform === "win32" && process.argv.length > 1) {
 // Deep link / file open handlers
 // ---------------------------------------------------------------------------
 
+/**
+ * The main window when it currently hosts the React renderer (not the inline
+ * loading screen, and not a window with nothing loaded yet), else null. Deep
+ * links sent to the loading screen would be dropped — queue them as pending
+ * instead.
+ */
+function getActiveRendererWindow(): BrowserWindow | null {
+  if (
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    isRendererUrl(mainWindow.webContents.getURL())
+  ) {
+    return mainWindow;
+  }
+  return null;
+}
+
 function handleDeepLink(url: string): void {
   const action = parseDeepLink(url);
   if (!action) return;
 
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.show();
-    mainWindow.focus();
-    mainWindow.webContents.send("deep-link", action);
+  const win = getActiveRendererWindow();
+  if (win) {
+    win.show();
+    win.focus();
+    win.webContents.send("deep-link", action);
   } else {
-    // Store for later; will be dispatched when the main window is ready.
+    // Store for later; dispatched on the renderer's did-finish-load. Surface
+    // an existing loading window so the user sees startup progress (a window
+    // must not be created here — open-url can fire before app ready).
     pendingDeepLink = url;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
   }
 }
 
 function handleFileOpen(filePath: string): void {
   const action = parseXreadFile(filePath);
 
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.show();
-    mainWindow.focus();
-    mainWindow.webContents.send("deep-link", action);
+  const win = getActiveRendererWindow();
+  if (win) {
+    win.show();
+    win.focus();
+    win.webContents.send("deep-link", action);
   } else {
-    // Store for later; will be dispatched when the main window is ready.
+    // Store for later; dispatched on the renderer's did-finish-load. Surface
+    // an existing loading window so the user sees startup progress (a window
+    // must not be created here — open-file can fire before app ready).
     pendingFileOpen = filePath;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
   }
 }
 
@@ -196,85 +241,52 @@ function dispatchPendingLinks(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Splash window
+// Sidecar startup (parallel to window creation)
 // ---------------------------------------------------------------------------
 
-async function showSplashAndStartSidecar(): Promise<void> {
-  // Clean up any existing splash window.
-  if (splashWindow && !splashWindow.isDestroyed()) {
-    splashWindow.close();
-    splashWindow = null;
-  }
-
-  splashWindow = new BrowserWindow({
-    width: SPLASH_WIDTH,
-    height: SPLASH_HEIGHT,
-    frame: false,
-    resizable: false,
-    center: true,
-    show: false,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-
-  // Load inline HTML for the splash.
-  splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(SPLASH_HTML)}`);
-  splashWindow.show();
-
-  // Handle retry from splash error screen.
-  // Remove any existing listener first to avoid stacking.
-  ipcMain.removeAllListeners("splash-retry");
-  ipcMain.on("splash-retry", async () => {
-    // Attempt to restart the sidecar from the error screen.
-    // This re-spawns the Python process rather than reloading the entire app.
-    try {
-      await sidecarManager.shutdown();
-      sidecarPort = 0;
-      const handle = await sidecarManager.start();
-      sidecarPort = handle.port;
-
-      // Close splash and open main window on success.
-      if (splashWindow && !splashWindow.isDestroyed()) {
-        splashWindow.close();
-      }
-      splashWindow = null;
-      createMainWindow();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown error starting sidecar";
-      splashWindow?.webContents.send("splash-error", message);
-    }
-  });
-
+/**
+ * Start the sidecar and, once it is healthy, swap the renderer into the main
+ * window (which has been showing the loading screen since app start).
+ *
+ * On failure the loading screen flips to its error state — visible message,
+ * raw detail, and a Retry button (wired to the `splash-retry` IPC below) —
+ * instead of a white screen or a silent exit.
+ */
+async function startSidecarAndLoadApp(): Promise<void> {
   try {
-    updateSplashStatus("Starting sidecar...");
+    lastSidecarError = null;
+    updateLoadingStatus("Starting sidecar...");
     const handle = await sidecarManager.start();
     sidecarPort = handle.port;
 
-    updateSplashStatus("Sidecar ready, loading app...");
-
-    // Close splash and open main window.
-    if (splashWindow && !splashWindow.isDestroyed()) {
-      splashWindow.close();
+    updateLoadingStatus("Sidecar ready, loading app...");
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      loadRenderer(mainWindow);
     }
-    splashWindow = null;
-
-    createMainWindow();
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Unknown error starting sidecar";
-    updateSplashStatus(`Error: ${message}`);
-
-    // Tell the splash to show the error state.
-    splashWindow?.webContents.send("splash-error", message);
+    const message = err instanceof Error ? err.message : "Unknown error starting sidecar";
+    lastSidecarError = message;
+    updateLoadingStatus(`Error: ${message}`);
+    // Tell the loading screen to show the error state.
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("splash-error", message);
+    }
   }
 }
 
-function updateSplashStatus(message: string): void {
-  if (splashWindow && !splashWindow.isDestroyed()) {
-    splashWindow.webContents.send("splash-status", message);
+// Retry from the loading screen's error state: re-spawn the Python process
+// rather than reloading the entire app.
+ipcMain.on("splash-retry", () => {
+  void (async () => {
+    await sidecarManager.shutdown();
+    sidecarPort = 0;
+    await startSidecarAndLoadApp();
+  })();
+});
+
+function updateLoadingStatus(message: string): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("splash-status", message);
   }
 }
 
@@ -319,26 +331,53 @@ function createMainWindow(): BrowserWindow {
 
   setApplicationMenu();
 
-  // Load the appropriate URL.
-  loadRenderer(mainWindow);
+  // Load the renderer when the sidecar is already running (window re-created
+  // from tray / macOS dock); otherwise show the loading screen — the renderer
+  // is swapped in by `startSidecarAndLoadApp` once the sidecar reports ready.
+  if (resolveRendererUrl(app.isPackaged, sidecarPort, VITE_DEV_URL) !== null) {
+    loadRenderer(mainWindow);
+  } else {
+    loadLoadingScreen(mainWindow);
+  }
 
   // Show the window once the content is ready.
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show();
-    // Dispatch any pending deep links that arrived before the window was ready.
-    dispatchPendingLinks();
   });
 
   return mainWindow;
 }
 
+/**
+ * Load the inline loading/error screen (shared with the former splash window)
+ * into `win`. If the sidecar already failed, flip straight to the error state
+ * once the page is ready instead of spinning forever.
+ */
+function loadLoadingScreen(win: BrowserWindow): void {
+  win.webContents.once("did-finish-load", () => {
+    if (lastSidecarError && !win.isDestroyed()) {
+      win.webContents.send("splash-error", lastSidecarError);
+    }
+  });
+  void win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(SPLASH_HTML)}`);
+}
+
 function loadRenderer(win: BrowserWindow): void {
-  if (app.isPackaged) {
-    // Production: the sidecar serves the static files.
-    win.loadURL(`http://127.0.0.1:${sidecarPort}/`);
-  } else {
-    // Development: use Vite HMR.
-    win.loadURL(VITE_DEV_URL);
+  const url = resolveRendererUrl(app.isPackaged, sidecarPort, VITE_DEV_URL);
+  if (url === null) {
+    // Defensive: callers only invoke this once the sidecar port is known.
+    loadLoadingScreen(win);
+    return;
+  }
+
+  // Dispatch any pending deep links once the renderer is up (they target the
+  // React router, so sending them to the loading screen would drop them).
+  win.webContents.once("did-finish-load", () => {
+    dispatchPendingLinks();
+  });
+
+  void win.loadURL(url);
+  if (!app.isPackaged) {
     // Open DevTools in dev mode.
     win.webContents.openDevTools({ mode: "detach" });
   }
@@ -500,11 +539,18 @@ async function restartSidecar(): Promise<void> {
   try {
     const handle = await sidecarManager.start();
     sidecarPort = handle.port;
-    // Re-inject the port in the current renderer.
+    lastSidecarError = null;
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.executeJavaScript(`
-        window.__XREAD_SIDECAR_PORT__ = ${sidecarPort};
-      `);
+      if (!isRendererUrl(mainWindow.webContents.getURL())) {
+        // The window is still on the loading/error screen (the sidecar never
+        // became ready before) — load the real renderer now.
+        loadRenderer(mainWindow);
+      } else {
+        // Re-inject the port in the current renderer.
+        mainWindow.webContents.executeJavaScript(`
+          window.__XREAD_SIDECAR_PORT__ = ${sidecarPort};
+        `);
+      }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error restarting sidecar";
@@ -610,12 +656,11 @@ ipcMain.handle("sidecar:restart-info", () => {
 // ---------------------------------------------------------------------------
 
 function broadcastSidecarStatus(status: string, detail?: string, restartInfo?: import("./sidecar").SidecarRestartInfo): void {
-  // Send to splash window.
-  if (splashWindow && !splashWindow.isDestroyed()) {
-    splashWindow.webContents.send("splash-status", `${status}${detail ? `: ${detail}` : ""}`);
-  }
-  // Send to main window.
   if (mainWindow && !mainWindow.isDestroyed()) {
+    // The loading screen listens for `splash-status`; the React renderer
+    // listens for `sidecar-status`. The window hosts one or the other, and
+    // each page ignores the channel it doesn't subscribe to.
+    mainWindow.webContents.send("splash-status", `${status}${detail ? `: ${detail}` : ""}`);
     mainWindow.webContents.send("sidecar-status", status, detail);
     if (restartInfo) {
       mainWindow.webContents.send("sidecar:restarting", restartInfo);
