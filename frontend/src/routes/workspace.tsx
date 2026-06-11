@@ -2,6 +2,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { BookOpenIcon, FileQuestionIcon, LightbulbIcon, PaperclipIcon } from "lucide-react";
+import * as React from "react";
 
 import { ThemeToggle } from "@/components/shell/theme-toggle";
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
@@ -224,6 +225,10 @@ function QueriesTab({ workspacePath }: { workspacePath: string }) {
 
 export function WorkspaceRoute() {
   const { importDocument, isImporting, workspacePath } = useWorkspaceActions();
+  // The header TabsList and the content TabsContent live in two separate
+  // Radix Tabs roots (the trigger row sits inside the <header> bar). Share
+  // one controlled value so clicking a header trigger switches the content.
+  const [tab, setTab] = React.useState("papers");
 
   if (!workspacePath) {
     return (
@@ -249,7 +254,7 @@ export function WorkspaceRoute() {
           <h1 className="text-sm font-semibold leading-tight">Default Workspace</h1>
           <p className="text-muted-foreground text-xs">Local-first &middot; LLM-Wiki memory</p>
         </div>
-        <Tabs defaultValue="papers" className="ml-6 hidden sm:block">
+        <Tabs value={tab} onValueChange={setTab} className="ml-6 hidden sm:block">
           <TabsList>
             <TabsTrigger value="papers" className="gap-1.5">
               <BookOpenIcon className="size-3.5" />
@@ -282,7 +287,7 @@ export function WorkspaceRoute() {
         </div>
       </header>
 
-      <Tabs defaultValue="papers" className="flex min-h-0 flex-1 flex-col">
+      <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
         <TabsContent value="papers" className="m-0 flex-1">
           <PapersTab workspacePath={workspacePath} />
         </TabsContent>
