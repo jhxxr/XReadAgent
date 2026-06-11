@@ -77,14 +77,32 @@ electron/
 
 ```
 1. Main process spawns: python -m xreadagent.api --port 0
-2. Sidecar prints on stdout: SIDECAR_READY port=<N>
-3. Main process polls: GET http://127.0.0.1:<N>/healthz → 200
-4. Main process loads renderer URL:
+2. Sidecar prints on stdout: SIDECAR_BOOT          (liveness — stdlib only, before heavy imports)
+3. Sidecar prints on stdout: SIDECAR_READY port=<N> (uvicorn startup complete)
+4. Main process polls: GET http://127.0.0.1:<N>/healthz → 200
+5. Main process loads renderer URL:
    - Dev: http://localhost:5173 (Vite HMR)
    - Prod: http://127.0.0.1:<N>/ (sidecar serves the built SPA — see *Frontend SPA Serving Contract*)
-5. On sidecar crash: auto-restart up to 3 times with exponential backoff
-6. On app quit: SIGTERM → 5s timeout → SIGKILL (Unix) / taskkill /F (Windows)
+6. On sidecar crash: auto-restart up to 3 times with exponential backoff
+7. On app quit: SIGTERM → 5s timeout → SIGKILL (Unix) / taskkill /F (Windows)
 ```
+
+**Tiered startup timeouts** (`sidecar.ts` `waitForReady`): any stdout/stderr output within
+`SIDECAR_BOOT_TIMEOUT_MS` (45s) proves the process is alive and clears the liveness deadline;
+`SIDECAR_READY port=<N>` must then arrive within `SIDECAR_READY_TIMEOUT_MS` (240s). Process
+exit or spawn error still fails immediately. `/healthz` has its own 30s budget after ready.
+
+> **Gotcha — first launch after install times out under a fixed 30s budget.** Windows
+> Defender's real-time scan of the bundled venv (thousands of files; bytecode is pruned from
+> the bundle) stalls the sidecar's import chain on a cold cache: measured **>120s with zero
+> output** on a fast NVMe machine, while warm starts take ~0.5–1.2s. This shipped as a v0.0.8
+> startup failure ("Sidecar did not report ready within 30s"). Hence the split budgets: the
+> entry point (`backend/.../api/__main__.py`) prints `SIDECAR_BOOT` (flushed) *before* the
+> heavy imports — which also requires `xreadagent/api/__init__.py` to stay a **lazy (PEP 562)
+> re-export** of `create_app`, since `python -m xreadagent.api` imports the package before
+> `__main__` runs. Pinned by `backend/tests/test_lazy_imports.py`
+> (`test_import_api_package_root_stays_light`), `backend/tests/test_api.py` (boot-before-ready
+> order), and `electron/tests/sidecar.test.ts` (tiered-timeout behavior).
 
 ### Frontend SPA Serving Contract
 

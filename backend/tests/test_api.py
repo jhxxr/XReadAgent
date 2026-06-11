@@ -93,9 +93,7 @@ def test_spa_serves_static_asset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert response.text == _ASSET_CONTENT
 
 
-def test_api_404_not_swallowed_by_spa(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_api_404_not_swallowed_by_spa(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_fake_frontend(tmp_path)
     monkeypatch.setenv("XREAD_FRONTEND_DIR", str(tmp_path))
     client = TestClient(create_app())
@@ -107,9 +105,7 @@ def test_api_404_not_swallowed_by_spa(
     assert response.headers["content-type"].startswith("application/json")
 
 
-def test_healthz_ok_with_frontend_mounted(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_healthz_ok_with_frontend_mounted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_fake_frontend(tmp_path)
     monkeypatch.setenv("XREAD_FRONTEND_DIR", str(tmp_path))
     client = TestClient(create_app())
@@ -184,7 +180,11 @@ def _pick_free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def _wait_for_sidecar_ready(proc: subprocess.Popen[str], timeout: float = 30.0) -> int:
+def _wait_for_sidecar_ready(
+    proc: subprocess.Popen[str],
+    timeout: float = 30.0,
+    seen_lines: list[str] | None = None,
+) -> int:
     assert proc.stdout is not None
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -196,6 +196,8 @@ def _wait_for_sidecar_ready(proc: subprocess.Popen[str], timeout: float = 30.0) 
             time.sleep(0.05)
             continue
         line = line.strip()
+        if line and seen_lines is not None:
+            seen_lines.append(line)
         if line.startswith("SIDECAR_READY port="):
             return int(line.removeprefix("SIDECAR_READY port="))
     raise TimeoutError("SIDECAR_READY line not seen within timeout")
@@ -211,8 +213,13 @@ def test_sidecar_subprocess_emits_ready_line() -> None:
         bufsize=1,
     )
     try:
-        actual_port = _wait_for_sidecar_ready(proc)
+        seen: list[str] = []
+        actual_port = _wait_for_sidecar_ready(proc, seen_lines=seen)
         assert actual_port == port
+
+        # Electron tiered-timeout contract: the SIDECAR_BOOT liveness marker
+        # must be the first stdout line, printed before the heavy imports.
+        assert seen[0] == "SIDECAR_BOOT", seen
 
         # Confirm /healthz actually answers on the reported port.
         response = httpx.get(f"http://127.0.0.1:{actual_port}/healthz", timeout=5.0)

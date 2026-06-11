@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Import-graph guards: startup paths must not load the agent-framework chain.
 
-The Electron loader gives the sidecar 30s to print ``SIDECAR_READY``; on a
+The Electron loader budgets sidecar startup tightly (45s for the
+``SIDECAR_BOOT`` liveness marker, 240s total for ``SIDECAR_READY``); on a
 cold cache (first run after install, AV scanning) the langchain/langsmith
 import chain alone can eat most of that budget. These tests pin the fix from
 the lazy-import refactor (PEP 562 ``__getattr__`` re-exports): importing the
@@ -59,6 +60,35 @@ def test_import_api_main_does_not_load_agent_frameworks() -> None:
 
 def test_import_cli_dispatcher_does_not_load_agent_frameworks() -> None:
     result = _run_import_guard("xreadagent.cli.main")
+    assert result.returncode == 0, result.stderr
+
+
+def test_import_api_package_root_stays_light() -> None:
+    """``import xreadagent.api`` must not pull FastAPI/uvicorn/api.main.
+
+    ``python -m xreadagent.api`` imports the package before ``__main__`` can
+    print the ``SIDECAR_BOOT`` liveness marker; an eager ``create_app``
+    re-export would delay the marker by the whole FastAPI/pydantic import
+    chain — exactly the cold-start window the marker exists to surface.
+    """
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(_BACKEND_SRC) + os.pathsep + env.get("PYTHONPATH", "")
+    snippet = (
+        "import sys\n"
+        "import xreadagent.api\n"
+        "bad = sorted(m for m in sys.modules"
+        " if m.startswith(('fastapi', 'uvicorn', 'pydantic')) or m == 'xreadagent.api.main')\n"
+        "assert not bad, f'heavy modules loaded by xreadagent.api package import: {bad}'\n"
+        "from xreadagent.api import create_app\n"
+        "assert callable(create_app)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", snippet],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=120,
+    )
     assert result.returncode == 0, result.stderr
 
 

@@ -233,8 +233,13 @@ export const SPLASH_HTML = `<!DOCTYPE html>
       if (message.includes("ImportError") || message.includes("ModuleNotFoundError")) {
         return "Python dependencies are missing. Please reinstall XReadAgent.";
       }
-      // Timeout.
-      if (message.includes("did not report ready") || message.includes("timeout")) {
+      // Process alive but never reported ready — almost always first-launch
+      // antivirus scanning of the bundled Python environment.
+      if (message.includes("did not report ready")) {
+        return "The sidecar is taking unusually long to start. This can happen on the first launch after install while your antivirus scans new files — click Retry to keep waiting.";
+      }
+      // No output at all — the process is hung, not slow.
+      if (message.includes("produced no output") || message.includes("timeout")) {
         return "The sidecar is taking too long to start. Check your installation and try again.";
       }
       // Generic error - show as-is if short enough.

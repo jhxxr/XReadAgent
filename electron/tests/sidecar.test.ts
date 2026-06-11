@@ -7,12 +7,22 @@
  * tests for SidecarManager require a running Python sidecar and are not
  * included here.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import path from "node:path";
 
-import { SIDECAR_READY_RE, resolvePythonPath, resolveSidecarPaths, SidecarManager, buildSidecarEnv, venvSitePackages } from "../src/sidecar";
+import {
+  SIDECAR_READY_RE,
+  SIDECAR_BOOT_TIMEOUT_MS,
+  SIDECAR_READY_TIMEOUT_MS,
+  resolvePythonPath,
+  resolveSidecarPaths,
+  SidecarManager,
+  buildSidecarEnv,
+  venvSitePackages,
+} from "../src/sidecar";
 import type { SidecarRestartInfo } from "../src/sidecar";
 
 // ---------------------------------------------------------------------------
@@ -317,6 +327,102 @@ describe("SidecarManager log buffer", () => {
   it("getRestartInfo returns null when no restart is in progress", () => {
     const manager = new SidecarManager({ pythonPath: "python" });
     expect(manager.getRestartInfo()).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SidecarManager — waitForReady tiered timeouts
+// ---------------------------------------------------------------------------
+
+/** Minimal stand-in for a spawned ChildProcess (spec: never spawn real Python). */
+interface FakeProc extends EventEmitter {
+  stdout: EventEmitter;
+  stderr: EventEmitter;
+}
+
+function makeFakeProc(): FakeProc {
+  const proc = new EventEmitter() as FakeProc;
+  proc.stdout = new EventEmitter();
+  proc.stderr = new EventEmitter();
+  return proc;
+}
+
+function callWaitForReady(manager: SidecarManager, proc: FakeProc): Promise<number> {
+  return (manager as unknown as { waitForReady(p: FakeProc): Promise<number> }).waitForReady(proc);
+}
+
+describe("SidecarManager waitForReady", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("keeps the boot budget meaningfully smaller than the ready budget", () => {
+    expect(SIDECAR_BOOT_TIMEOUT_MS).toBeLessThan(SIDECAR_READY_TIMEOUT_MS);
+  });
+
+  it("resolves with the port when the ready marker arrives", async () => {
+    const manager = new SidecarManager({ pythonPath: "python" });
+    const proc = makeFakeProc();
+    const promise = callWaitForReady(manager, proc);
+    proc.stdout.emit("data", Buffer.from("SIDECAR_BOOT\nSIDECAR_READY port=4321\n"));
+    await expect(promise).resolves.toBe(4321);
+  });
+
+  it("handles a ready marker split across chunks", async () => {
+    const manager = new SidecarManager({ pythonPath: "python" });
+    const proc = makeFakeProc();
+    const promise = callWaitForReady(manager, proc);
+    proc.stdout.emit("data", Buffer.from("SIDECAR_READY po"));
+    proc.stdout.emit("data", Buffer.from("rt=9876\n"));
+    await expect(promise).resolves.toBe(9876);
+  });
+
+  it("fails fast when the process stays completely silent past the boot budget", async () => {
+    vi.useFakeTimers();
+    const manager = new SidecarManager({ pythonPath: "python" });
+    const proc = makeFakeProc();
+    const promise = callWaitForReady(manager, proc);
+    const assertion = expect(promise).rejects.toThrow(/produced no output/);
+    await vi.advanceTimersByTimeAsync(SIDECAR_BOOT_TIMEOUT_MS + 1);
+    await assertion;
+  });
+
+  it("keeps waiting past the boot budget once any output is seen (cold AV scan)", async () => {
+    vi.useFakeTimers();
+    const statuses: string[] = [];
+    const manager = new SidecarManager({ pythonPath: "python" }, (status) => {
+      statuses.push(status);
+    });
+    const proc = makeFakeProc();
+    const promise = callWaitForReady(manager, proc);
+
+    // stderr noise inside the boot budget proves the process is alive.
+    proc.stderr.emit("data", Buffer.from("some warning\n"));
+    expect(statuses).toContain("booting");
+
+    // Well past the old 30s budget — must still be waiting, not rejected.
+    await vi.advanceTimersByTimeAsync(SIDECAR_BOOT_TIMEOUT_MS + 90_000);
+    proc.stdout.emit("data", Buffer.from("SIDECAR_READY port=1234\n"));
+    await expect(promise).resolves.toBe(1234);
+  });
+
+  it("rejects when the ready marker never arrives within the ready budget", async () => {
+    vi.useFakeTimers();
+    const manager = new SidecarManager({ pythonPath: "python" });
+    const proc = makeFakeProc();
+    const promise = callWaitForReady(manager, proc);
+    proc.stdout.emit("data", Buffer.from("SIDECAR_BOOT\n"));
+    const assertion = expect(promise).rejects.toThrow(/did not report ready within 240s/);
+    await vi.advanceTimersByTimeAsync(SIDECAR_READY_TIMEOUT_MS + 1);
+    await assertion;
+  });
+
+  it("rejects immediately when the process exits before becoming ready", async () => {
+    const manager = new SidecarManager({ pythonPath: "python" });
+    const proc = makeFakeProc();
+    const promise = callWaitForReady(manager, proc);
+    proc.emit("exit", 1);
+    await expect(promise).rejects.toThrow(/exited before becoming ready/);
   });
 });
 

@@ -2,18 +2,34 @@
 /**
  * Python sidecar lifecycle management.
  *
- * Spawns `python -m xreadagent.api --port 0`, reads the
- * `SIDECAR_READY port=<N>` marker from stdout, and polls `/healthz`
- * until the sidecar is ready. Handles graceful shutdown with
- * platform-appropriate force-kill fallback.
+ * Spawns `python -m xreadagent.api --port 0`, reads the `SIDECAR_BOOT`
+ * liveness marker and then the `SIDECAR_READY port=<N>` marker from stdout,
+ * and polls `/healthz` until the sidecar is ready. Handles graceful shutdown
+ * with platform-appropriate force-kill fallback.
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import * as fs from "node:fs";
 import * as http from "node:http";
 import path from "node:path";
 
-/** Maximum seconds to wait for the sidecar to become ready. */
-const SIDECAR_STARTUP_TIMEOUT_MS = 30_000;
+/**
+ * Maximum ms to wait for the first sign of life (any stdout/stderr output)
+ * from the sidecar. The entry point prints `SIDECAR_BOOT` with only stdlib
+ * modules loaded, so a process that stays completely silent past this budget
+ * is genuinely hung — not merely slow.
+ */
+export const SIDECAR_BOOT_TIMEOUT_MS = 45_000;
+
+/**
+ * Maximum ms to wait for the `SIDECAR_READY` marker. Deliberately generous:
+ * on the first launch after install, antivirus real-time scanning of the
+ * bundled venv has been measured to stall the import chain past 120s on a
+ * fast machine (zero output the whole time) — slower disks need more.
+ */
+export const SIDECAR_READY_TIMEOUT_MS = 240_000;
+
+/** Maximum ms to wait for `/healthz` to return 200 after the ready marker. */
+const HEALTHZ_TIMEOUT_MS = 30_000;
 
 /** Maximum seconds to wait for graceful shutdown before force-killing. */
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 5_000;
@@ -266,13 +282,59 @@ export class SidecarManager {
 
   private waitForReady(proc: ChildProcess): Promise<number> {
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error(`Sidecar did not report ready within ${SIDECAR_STARTUP_TIMEOUT_MS / 1000}s`));
-      }, SIDECAR_STARTUP_TIMEOUT_MS);
+      let bootTimer: NodeJS.Timeout | null = null;
+
+      const cleanup = () => {
+        if (bootTimer) {
+          clearTimeout(bootTimer);
+          bootTimer = null;
+        }
+        clearTimeout(readyTimer);
+        proc.stdout?.removeListener("data", onStdout);
+        proc.stderr?.removeListener("data", onLife);
+      };
+
+      const fail = (err: Error) => {
+        cleanup();
+        reject(err);
+      };
+
+      // Phase 1 — liveness: the entry point prints SIDECAR_BOOT before its
+      // heavy imports, so total silence past this budget means a hung process.
+      // Any stdout/stderr output (boot marker, warnings, ...) clears it.
+      bootTimer = setTimeout(() => {
+        fail(
+          new Error(
+            `Sidecar produced no output within ${SIDECAR_BOOT_TIMEOUT_MS / 1000}s (process appears hung)`,
+          ),
+        );
+      }, SIDECAR_BOOT_TIMEOUT_MS);
+
+      // Phase 2 — readiness: once the process shows life, give the import
+      // chain a generous budget (first launch under AV scanning takes minutes).
+      const readyTimer = setTimeout(() => {
+        fail(
+          new Error(
+            `Sidecar did not report ready within ${SIDECAR_READY_TIMEOUT_MS / 1000}s`,
+          ),
+        );
+      }, SIDECAR_READY_TIMEOUT_MS);
+
+      const onLife = () => {
+        if (bootTimer) {
+          clearTimeout(bootTimer);
+          bootTimer = null;
+          this.emit(
+            "booting",
+            "Python runtime started — loading components (first launch can take a few minutes)",
+          );
+        }
+      };
 
       let accumulated = "";
 
       const onStdout = (chunk: Buffer) => {
+        onLife();
         accumulated += chunk.toString();
         const lines = accumulated.split("\n");
         // Keep the last (possibly incomplete) line in the buffer.
@@ -281,23 +343,21 @@ export class SidecarManager {
         for (const line of lines) {
           const match = SIDECAR_READY_RE.exec(line.trim());
           if (match) {
-            clearTimeout(timeout);
-            proc.stdout?.removeListener("data", onStdout);
+            cleanup();
             resolve(Number(match[1]));
           }
         }
       };
 
       proc.stdout?.on("data", onStdout);
+      proc.stderr?.on("data", onLife);
 
       proc.on("error", (err) => {
-        clearTimeout(timeout);
-        reject(new Error(`Sidecar process error: ${err.message}`));
+        fail(new Error(`Sidecar process error: ${err.message}`));
       });
 
       proc.on("exit", (code) => {
-        clearTimeout(timeout);
-        reject(new Error(`Sidecar exited before becoming ready (code=${code})`));
+        fail(new Error(`Sidecar exited before becoming ready (code=${code})`));
       });
     });
   }
@@ -312,14 +372,14 @@ export class SidecarManager {
           res.resume(); // drain the response body
           if (res.statusCode === 200) {
             resolve();
-          } else if (Date.now() - start > SIDECAR_STARTUP_TIMEOUT_MS) {
+          } else if (Date.now() - start > HEALTHZ_TIMEOUT_MS) {
             reject(new Error(`/healthz did not return 200 within timeout`));
           } else {
             setTimeout(tryCheck, interval);
           }
         });
         req.on("error", () => {
-          if (Date.now() - start > SIDECAR_STARTUP_TIMEOUT_MS) {
+          if (Date.now() - start > HEALTHZ_TIMEOUT_MS) {
             reject(new Error(`/healthz not reachable within timeout`));
           } else {
             setTimeout(tryCheck, interval);

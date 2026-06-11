@@ -194,15 +194,16 @@ def _default_runner(...):
 
 ### Pattern: SIDECAR_READY contract (cross-layer)
 
-**What**: When `python -m xreadagent.api --port N` starts, the FastAPI lifespan opens **before** uvicorn logs "Uvicorn running on..." and emits one line to stdout, flushed:
+**What**: `python -m xreadagent.api --port N` first prints `SIDECAR_BOOT` (flushed, stdlib-only — before the heavy uvicorn/FastAPI imports) as a liveness marker; then the FastAPI lifespan opens **before** uvicorn logs "Uvicorn running on..." and emits the ready line, flushed:
 
 ```
+SIDECAR_BOOT
 SIDECAR_READY port=59979
 ```
 
-**Why**: The future Electron loader spawns the Python sidecar as a child process and polls stdout for this line to know when `/healthz` is reachable. Race-free, no time-based wait.
+**Why**: The Electron loader spawns the Python sidecar as a child process and polls stdout for these lines. `SIDECAR_BOOT` lets it tell a slow import chain (first launch under antivirus scanning — minutes) apart from a hung process; `SIDECAR_READY` says `/healthz` is reachable. Race-free, no time-based wait. This requires `xreadagent/api/__init__.py` to stay a **lazy (PEP 562) re-export** of `create_app` — `python -m` imports the package before `__main__` runs, so an eager re-export would delay the boot marker by the whole FastAPI/pydantic chain.
 
-**Test contract**: `test_api::test_sidecar_subprocess_emits_ready_line` spawns the real `python -m xreadagent.api --port 0` subprocess, reads stdout, extracts the port, calls `/healthz`, asserts 200.
+**Test contract**: `test_api::test_sidecar_subprocess_emits_ready_line` spawns the real `python -m xreadagent.api --port 0` subprocess, asserts `SIDECAR_BOOT` is the first stdout line, extracts the port from the ready line, calls `/healthz`, asserts 200. `test_lazy_imports::test_import_api_package_root_stays_light` pins the lazy package root.
 
 ---
 
