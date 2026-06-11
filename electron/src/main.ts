@@ -16,6 +16,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, T
 import * as path from "node:path";
 
 import { parseDeepLink, parseXreadFile } from "./deeplink";
+import { installExternalLinkHandlers } from "./external-links";
 import { buildApplicationMenu } from "./menu";
 import { SidecarManager, resolveSidecarPaths } from "./sidecar";
 import { SPLASH_HTML, SPLASH_HEIGHT, SPLASH_WIDTH } from "./splash";
@@ -307,6 +308,14 @@ function createMainWindow(): BrowserWindow {
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
+
+  // External http(s) links open in the system browser; navigation away from
+  // the local renderer origins is blocked. The origin list is a getter so a
+  // sidecar restart (new port) is picked up without re-installing handlers.
+  installExternalLinkHandlers(mainWindow.webContents, () => [
+    new URL(VITE_DEV_URL).origin,
+    `http://127.0.0.1:${sidecarPort}`,
+  ]);
 
   setApplicationMenu();
 

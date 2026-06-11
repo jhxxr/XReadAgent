@@ -65,6 +65,7 @@ electron/
     ├── sidecar.ts           # SidecarManager class (spawn, health, restart, shutdown)
     ├── splash.ts            # Inline HTML for loading/error splash window
     ├── deeplink.ts          # xread:// URL parser + .xread file handler
+    ├── external-links.ts    # window-open / will-navigate policy (external http(s) → system browser)
     └── menu.ts              # Application menu builder (File/Edit/View/Help)
 ```
 
@@ -117,8 +118,17 @@ layers and breaks silently if either half is missing:
 - The script must be plain JavaScript ESM. Do not use TypeScript-only syntax in `.mjs` files.
 - Python package metadata lives at the repository root `pyproject.toml`, not
   `backend/pyproject.toml`.
-- Dependency installation must resolve from the repository root so Hatch can use
-  `[tool.hatch.build.targets.wheel] packages = ["backend/src/xreadagent"]`.
+- Dependency installation must resolve from the repository root **and honor `uv.lock`**:
+  `bundle-python.mjs` runs `uv export --frozen --no-dev --no-emit-project` and installs the
+  exported requirements into the bundled venv, then installs the `xreadagent` package itself
+  with `--no-deps` (Hatch uses
+  `[tool.hatch.build.targets.wheel] packages = ["backend/src/xreadagent"]`). After install,
+  the script deletes the `xreadagent/` source from the venv's `site-packages` (the runtime
+  imports the `resources/backend` copy — see below) but **keeps the `xreadagent-*.dist-info`**
+  directory, which `importlib.metadata.version("xreadagent")` (api/main.py, cli/main.py)
+  depends on. Bytecode (`__pycache__`/`.pyc`) is pruned from the venv and excluded from the
+  backend source copy; the bundled CPython runtime's stdlib bytecode is intentionally left
+  untouched (stripping it would slow every cold start).
 - Runtime source is still copied from `backend/src/xreadagent` into
   `electron/resources/backend/xreadagent`; production sidecar startup relies on
   `PYTHONPATH` containing **both** `resources/backend` (the `xreadagent` source) **and** the
@@ -129,7 +139,8 @@ layers and breaks silently if either half is missing:
   deps unreachable and the sidecar exits `code=1` (`ModuleNotFoundError`). The bundled venv is
   also non-relocatable (`pyvenv.cfg` `home` is the build-machine path), so launching the venv's
   own `python.exe` is not an option. `SidecarManager`'s `buildSidecarEnv()` wires this
-  `PYTHONPATH` (backend first so packaged source wins over the wheel copy, then site-packages).
+  `PYTHONPATH` (backend first, then site-packages — `resources/backend` is the only
+  `xreadagent` source in the bundle).
 - When installing into the bundled venv with `uv pip install --python`, pass the venv's
   Python executable (`Scripts/python.exe` on Windows, `bin/python` on POSIX), not pip.
 - python-build-standalone release assets use target-triple platform suffixes and tarballs:
@@ -151,9 +162,12 @@ the dedicated `release` job (`softprops/action-gh-release`), and the app ships *
 - **The Release workflow build steps (`pnpm dist`, `pnpm dist:mac`) MUST NOT pass `GH_TOKEN` /
   `GITHUB_TOKEN`** as env. That token is what triggers electron-builder's GitHub-publish mode.
 - The `release` job keeps using the default `GITHUB_TOKEN` — only the *build* steps must stay clean.
-- Release CI runs `uv sync --frozen`; any project version bump in `pyproject.toml` must be committed
-  with the matching editable `xreadagent` entry in `uv.lock`, or the release job can fail before
-  packaging begins.
+- Version bumps go through `node scripts/bump-version.mjs <version>` (updates pyproject.toml,
+  frontend/electron package.json, `xreadagent.__version__`, and `uv.lock` in one command). The
+  Release workflow fails fast when the pushed tag does not match the pyproject.toml version.
+  The workflow does **not** run `uv sync`; lockfile consistency is enforced by
+  `uv export --frozen` inside `bundle-python.mjs` — a stale `uv.lock` still fails the build
+  before packaging begins.
 
 > **Gotcha — "Cannot detect repository by .git/config".** If `GH_TOKEN` is present **and** publish
 > is not disabled, electron-builder enters GitHub-publish mode during `afterPack`, tries to generate
