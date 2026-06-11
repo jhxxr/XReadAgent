@@ -23,9 +23,12 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from typing import TYPE_CHECKING
 
-from xreadagent.agents.ingest import PlannerMethod
 from xreadagent.cli.env import parse_headers_spec
+
+if TYPE_CHECKING:
+    from xreadagent.agents.ingest import PlannerMethod
 
 _PLANNER_METHODS: tuple[PlannerMethod, ...] = ("auto", "tool", "json")
 

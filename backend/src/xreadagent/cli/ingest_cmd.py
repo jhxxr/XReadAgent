@@ -17,10 +17,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from xreadagent.agents._defaults import DEFAULT_AGENT_MAX_TOKENS
-from xreadagent.agents.ingest import IngestAgent, PlannerMethod
-from xreadagent.agents.orchestrator import ingest_source
 from xreadagent.cli.env import ensure_provider_credentials, load_env_files
 from xreadagent.cli.llm_flags import (
     add_llm_runtime_flags,
@@ -31,6 +30,9 @@ from xreadagent.cli.llm_flags import (
 from xreadagent.cli.output import emit_list, emit_many, error, progress
 from xreadagent.cli.stubs import stub_ingest_planner, use_stub_planner
 from xreadagent.wiki.workspace import Workspace
+
+if TYPE_CHECKING:
+    from xreadagent.agents.ingest import IngestAgent, PlannerMethod
 
 
 def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -83,6 +85,10 @@ def _build_agent(
     planner_method: PlannerMethod,
     max_tokens: int | None,
 ) -> IngestAgent:
+    # Imported lazily: pulling in IngestAgent loads the LangChain chain, which
+    # must not happen at CLI-dispatch time (keeps `xreadagent --version` fast).
+    from xreadagent.agents.ingest import IngestAgent
+
     if force_stub or use_stub_planner():
         return IngestAgent(
             workspace,
@@ -99,6 +105,8 @@ def _build_agent(
 
 
 def run(args: argparse.Namespace) -> int:
+    from xreadagent.agents.orchestrator import ingest_source
+
     source_path: Path = args.source_path
     workspace_path: Path = args.workspace_path
     model: str = args.model

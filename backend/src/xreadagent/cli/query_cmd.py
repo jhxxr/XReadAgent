@@ -6,10 +6,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from xreadagent.agents._defaults import DEFAULT_AGENT_MAX_TOKENS
-from xreadagent.agents.query import PlannerMethod, QueryAgent
-from xreadagent.agents.query_orchestrator import answer_query
 from xreadagent.cli.env import ensure_provider_credentials, load_env_files
 from xreadagent.cli.llm_flags import (
     add_llm_runtime_flags,
@@ -20,6 +19,9 @@ from xreadagent.cli.llm_flags import (
 from xreadagent.cli.output import emit_list, emit_many, error, progress
 from xreadagent.cli.stubs import stub_query_planner, use_stub_planner
 from xreadagent.wiki.workspace import Workspace
+
+if TYPE_CHECKING:
+    from xreadagent.agents.query import PlannerMethod, QueryAgent
 
 
 def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -72,6 +74,10 @@ def _build_agent(
     planner_method: PlannerMethod,
     max_tokens: int | None,
 ) -> QueryAgent:
+    # Imported lazily: pulling in QueryAgent loads the LangChain chain, which
+    # must not happen at CLI-dispatch time (keeps `xreadagent --version` fast).
+    from xreadagent.agents.query import QueryAgent
+
     if force_stub or use_stub_planner():
         return QueryAgent(
             workspace,
@@ -88,6 +94,8 @@ def _build_agent(
 
 
 def run(args: argparse.Namespace) -> int:
+    from xreadagent.agents.query_orchestrator import answer_query
+
     workspace_path: Path = args.workspace_path
     question: str = args.question
     model: str = args.model
