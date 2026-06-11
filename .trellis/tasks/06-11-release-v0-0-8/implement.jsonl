@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/archive/2026-06/06-10-optimize-project-scope-tbd/research/build-release.md", "reason": "本次发布首次使用的 bump 脚本/release workflow 改动的调研背景与 file:line 引用"}
+{"file": ".trellis/spec/electron/index.md", "reason": "打包契约（uv.lock 锁定安装、bump 流程）规范"}

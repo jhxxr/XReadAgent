@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 25
+- **Total Sessions**: 26
 - **Last Active**: 2026-06-11
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~873 | Active |
+| `journal-1.md` | ~906 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 26 | 2026-06-11 | Fix packaged-app sidecar 30s startup timeout (cold AV scan) | `8bd9f2c` | `main` |
 | 25 | 2026-06-11 | Project optimization: performance, UX, build/release (12 items) | `d7d0b2f`, `53e6c26`, `2fadffe`, `e162b4b`, `dcac3ad`, `8ed026e`, `9cedaa7`, `9380cb4`, `e741a3c`, `7d16a5d`, `207849f`, `f9ac5aa` | `main` |
 | 24 | 2026-06-10 | Release v0.0.7 | `106037c` | `main` |
 | 23 | 2026-06-10 | Fix PDF import error details | `e3e371e` | `main` |

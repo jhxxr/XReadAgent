@@ -871,3 +871,36 @@ Completed the 12-item optimization task across three directions. Performance: la
 ### Next Steps
 
 - None - task complete
+
+
+## Session 26: Fix packaged-app sidecar 30s startup timeout (cold AV scan)
+
+**Date**: 2026-06-11
+**Task**: Fix packaged-app sidecar 30s startup timeout (cold AV scan)
+**Branch**: `main`
+
+### Summary
+
+Reproduced v0.0.8 first-launch failure: Defender cold-scan of bundled venv stalls sidecar imports >120s with zero output (warm ~1s), blowing the fixed 30s budget. Fix: SIDECAR_BOOT liveness marker printed before heavy imports (api/__init__.py now PEP 562 lazy), tiered Electron timeouts (45s any-output / 240s ready / 30s healthz), splash messages distinguish slow-AV-scan vs hung. Backend 392 + electron 100 tests pass; spec contracts updated both layers; verified end-to-end against the installed bundle.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8bd9f2c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
