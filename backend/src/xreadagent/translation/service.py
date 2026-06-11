@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from xreadagent.translation.babeldoc_adapter import AdapterConfig
+from xreadagent.translation.babeldoc_meta import installed_babeldoc_version
 from xreadagent.translation.events import (
     ErrorEvent,
     FinishEvent,
@@ -48,7 +49,7 @@ from xreadagent.wiki.log import WikiConversationLog
 from xreadagent.wiki.sources import compute_content_hash
 from xreadagent.wiki.workspace import Workspace
 
-_BABELDOC_VERSION_DEFAULT = "0.6.2"
+_BABELDOC_VERSION_DEFAULT = installed_babeldoc_version()
 
 
 @dataclass(frozen=True)

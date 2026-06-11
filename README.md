@@ -113,6 +113,20 @@ quickstart.
 See [`.trellis/tasks/05-22-build-sciresearch-agent-literature-reading-knowledge-base/plan.md`](.trellis/tasks/05-22-build-sciresearch-agent-literature-reading-knowledge-base/plan.md)
 for the full architecture, decision log (D1–D10), and phased roadmap.
 
+## Releasing
+
+The project version lives in five places (pyproject.toml, frontend/electron
+`package.json`, `xreadagent.__version__`, `uv.lock`). Never edit them by hand —
+bump them in one command:
+
+```sh
+node scripts/bump-version.mjs 0.0.8            # bump everything + refresh uv.lock
+node scripts/bump-version.mjs 0.0.8 --dry-run  # preview only
+```
+
+Then commit, tag `v<version>`, and push the tag — the Release workflow fails
+fast if the tag does not match the pyproject.toml version.
+
 ## License
 
 AGPL-3.0-or-later. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

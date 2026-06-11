@@ -49,6 +49,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from xreadagent.translation.babeldoc_meta import installed_babeldoc_version
 from xreadagent.translation.events import (
     ErrorEvent,
     FinishEvent,
@@ -129,7 +130,7 @@ class AdapterConfig:
     source_lang: str = "en"
     no_mono: bool = False
     no_dual: bool = False
-    babeldoc_version: str = "0.6.2"
+    babeldoc_version: str = field(default_factory=installed_babeldoc_version)
     extra: dict[str, Any] = field(default_factory=dict)
 
 

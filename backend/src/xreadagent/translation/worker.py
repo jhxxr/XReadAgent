@@ -42,6 +42,7 @@ from multiprocessing.queues import Queue as MpQueue
 from typing import Any, Protocol
 
 from xreadagent.translation.babeldoc_adapter import AdapterConfig
+from xreadagent.translation.babeldoc_meta import installed_babeldoc_version
 from xreadagent.translation.events import (
     ErrorEvent,
     TranslationEvent,
@@ -65,7 +66,7 @@ class WorkerJobConfig:
     adapter: AdapterConfig
     chat: ChatConfig
     job_id: str
-    babeldoc_version: str = "0.6.2"
+    babeldoc_version: str = field(default_factory=installed_babeldoc_version)
 
 
 @dataclass
