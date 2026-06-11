@@ -112,6 +112,7 @@ function installMockElectronAPI(): NonNullable<Window["electronAPI"]> {
     sendSplashRetry: vi.fn(),
     showOpenFolderDialog: vi.fn().mockResolvedValue(["/tmp/ws"]),
     showOpenFileDialog: vi.fn().mockResolvedValue([]),
+    getPathForFile: vi.fn(() => "/tmp/paper.pdf"),
     showNotification: vi.fn(),
     getSidecarStatus: vi.fn().mockResolvedValue({
       status: "running",

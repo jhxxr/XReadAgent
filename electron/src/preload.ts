@@ -5,7 +5,7 @@
  * Exposes a minimal `window.electronAPI` surface via `contextBridge` for
  * secure IPC between the renderer and the main process.
  */
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 export interface SidecarStatus {
   status: "idle" | "starting" | "running" | "stopped" | "crashed";
@@ -49,6 +49,12 @@ export interface ElectronAPI {
   showOpenFolderDialog: (title?: string) => Promise<string[]>;
   /** Show an open-file dialog and return the selected path(s). */
   showOpenFileDialog: (title?: string) => Promise<string[]>;
+  /**
+   * Resolve the absolute filesystem path of a `File` object (e.g. from a
+   * drag-and-drop event). Returns an empty string when the path cannot be
+   * resolved (synthetic File objects).
+   */
+  getPathForFile: (file: File) => string;
   /** Show a native notification. */
   showNotification: (title: string, body: string) => void;
   /** Query the current sidecar status (running/stopped/pid/port). */
@@ -105,6 +111,10 @@ const api: ElectronAPI = {
 
   showOpenFileDialog: async (title?: string) => {
     return ipcRenderer.invoke("show-open-file-dialog", title) as Promise<string[]>;
+  },
+
+  getPathForFile: (file: File) => {
+    return webUtils.getPathForFile(file);
   },
 
   showNotification: (title: string, body: string) => {

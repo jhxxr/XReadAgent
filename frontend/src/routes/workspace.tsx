@@ -5,6 +5,7 @@ import { BookOpenIcon, FileQuestionIcon, LightbulbIcon, PaperclipIcon } from "lu
 import * as React from "react";
 
 import { ThemeToggle } from "@/components/shell/theme-toggle";
+import { WorkspaceDropZone } from "@/components/workspace/workspace-drop-zone";
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -224,15 +225,19 @@ function QueriesTab({ workspacePath }: { workspacePath: string }) {
 }
 
 export function WorkspaceRoute() {
-  const { importDocument, isImporting, workspacePath } = useWorkspaceActions();
+  const { importDocument, importDroppedFiles, isImporting, workspacePath } = useWorkspaceActions();
   // The header TabsList and the content TabsContent live in two separate
   // Radix Tabs roots (the trigger row sits inside the <header> bar). Share
   // one controlled value so clicking a header trigger switches the content.
   const [tab, setTab] = React.useState("papers");
 
+  const handleDropFiles = (files: File[]) => {
+    void importDroppedFiles(files);
+  };
+
   if (!workspacePath) {
     return (
-      <div className="flex h-full min-w-0 flex-col">
+      <WorkspaceDropZone className="flex h-full min-w-0 flex-col" onDropFiles={handleDropFiles}>
         <header className="border-border/60 flex h-14 items-center gap-4 border-b px-6">
           <div className="flex flex-col">
             <h1 className="text-sm font-semibold leading-tight">Default Workspace</h1>
@@ -243,12 +248,12 @@ export function WorkspaceRoute() {
           </div>
         </header>
         <WorkspaceEmptyState />
-      </div>
+      </WorkspaceDropZone>
     );
   }
 
   return (
-    <div className="flex h-full min-w-0 flex-col">
+    <WorkspaceDropZone className="flex h-full min-w-0 flex-col" onDropFiles={handleDropFiles}>
       <header className="border-border/60 flex h-14 items-center gap-4 border-b px-6">
         <div className="flex flex-col">
           <h1 className="text-sm font-semibold leading-tight">Default Workspace</h1>
@@ -298,6 +303,6 @@ export function WorkspaceRoute() {
           <QueriesTab workspacePath={workspacePath} />
         </TabsContent>
       </Tabs>
-    </div>
+    </WorkspaceDropZone>
   );
 }

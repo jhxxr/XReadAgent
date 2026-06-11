@@ -55,6 +55,12 @@ export interface ElectronAPI {
   showOpenFolderDialog: (title?: string) => Promise<string[]>;
   /** Show an open-file dialog and return the selected path(s). */
   showOpenFileDialog: (title?: string) => Promise<string[]>;
+  /**
+   * Resolve the absolute filesystem path of a `File` object (e.g. from a
+   * drag-and-drop event). Returns an empty string when the path cannot be
+   * resolved (synthetic File objects).
+   */
+  getPathForFile: (file: File) => string;
   /** Show a native notification. */
   showNotification: (title: string, body: string) => void;
   /** Query the current sidecar status (running/stopped/pid/port). */
