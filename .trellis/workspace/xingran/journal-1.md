@@ -827,3 +827,47 @@ Bumped XReadAgent version metadata to 0.0.7, pushed main and annotated tag v0.0.
 ### Next Steps
 
 - None - task complete
+
+
+## Session 25: Project optimization: performance, UX, build/release (12 items)
+
+**Date**: 2026-06-11
+**Task**: Project optimization: performance, UX, build/release (12 items)
+**Branch**: `main`
+
+### Summary
+
+Completed the 12-item optimization task across three directions. Performance: lazy agent imports (import xreadagent 0.512s->0.006s, sidecar startup langchain-free with subprocess guard test), frontend code-splitting (entry 1176kB->538kB), PDF keep-alive across reader tabs, Electron parallel startup with loading/error states. UX: fixed disconnected workspace tabs bug, external links to system browser, ingest progress via job+WS (mirroring translate), drag-drop PDF import. Build/release: bundle venv installed from uv.lock (--locked), single-command version bump across 5 locations + tag gate, CI/release caches, bundle slimming. Each PR verified by trellis-check agents (caught: --frozen fake staleness gate, deep-link splash drop, cross-instance ingest race). Specs updated with lazy-import contract and job+WS pattern. All gates green: backend 391 tests, frontend 179, electron 93.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d7d0b2f` | (see git log) |
+| `53e6c26` | (see git log) |
+| `2fadffe` | (see git log) |
+| `e162b4b` | (see git log) |
+| `dcac3ad` | (see git log) |
+| `8ed026e` | (see git log) |
+| `9cedaa7` | (see git log) |
+| `9380cb4` | (see git log) |
+| `e741a3c` | (see git log) |
+| `7d16a5d` | (see git log) |
+| `207849f` | (see git log) |
+| `f9ac5aa` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
