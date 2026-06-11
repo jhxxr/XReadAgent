@@ -15,18 +15,24 @@ import {
   SparklesIcon,
   XIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { WikiMarkdown } from "@/components/wiki/wiki-markdown";
 import { postQuery } from "@/lib/api";
 import { readWorkspacePath } from "@/lib/workspace";
 import { cn } from "@/lib/utils";
 import type { CitedEvidence, QueryResultResponse } from "@/types/api";
+
+// Lazy-loaded so react-markdown (+ remark-gfm) stays out of the initial
+// bundle — the copilot panel is part of the always-mounted shell, but the
+// markdown renderer is only needed once an assistant answer arrives.
+const WikiMarkdown = lazy(() =>
+  import("@/components/wiki/wiki-markdown").then((m) => ({ default: m.WikiMarkdown })),
+);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -117,7 +123,9 @@ function AssistantMessageBubble({
     <div className="flex flex-col gap-3">
       {/* Answer */}
       <div className="bg-muted rounded-2xl rounded-bl-md px-3.5 py-2.5">
-        <WikiMarkdown content={content} />
+        <Suspense fallback={<p className="whitespace-pre-wrap text-sm">{content}</p>}>
+          <WikiMarkdown content={content} />
+        </Suspense>
       </div>
 
       {/* Confidence badge */}

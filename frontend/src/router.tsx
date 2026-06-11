@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  lazyRouteComponent,
+  redirect,
+} from "@tanstack/react-router";
 
 import { AppShell } from "@/components/shell/app-shell";
-import { ConceptRoute } from "@/routes/concept";
-import { PaperIndexRoute } from "@/routes/paper-index";
-import { PaperReadRoute } from "@/routes/paper-read";
-import { PaperRoute } from "@/routes/paper";
-import { QueriesRoute } from "@/routes/queries";
-import { QueryDetailRoute } from "@/routes/query-detail";
-import { SettingsRoute } from "@/routes/settings";
 import { WorkspaceRoute } from "@/routes/workspace";
 
+// All routes except the home (`/workspace`) load lazily so heavy dependencies
+// (pdfjs-dist in the reader, react-markdown in the wiki pages) stay out of the
+// initial bundle and only download when the user navigates to them.
 const rootRoute = createRootRoute({
   component: AppShell,
 });
@@ -34,43 +36,43 @@ const workspaceRoute = createRoute({
 const paperIndexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/paper",
-  component: PaperIndexRoute,
+  component: lazyRouteComponent(() => import("@/routes/paper-index"), "PaperIndexRoute"),
 });
 
 const paperRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/paper/$slug",
-  component: PaperRoute,
+  component: lazyRouteComponent(() => import("@/routes/paper"), "PaperRoute"),
 });
 
 const paperReadRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/paper/$slug/read",
-  component: PaperReadRoute,
+  component: lazyRouteComponent(() => import("@/routes/paper-read"), "PaperReadRoute"),
 });
 
 const conceptRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/concept/$slug",
-  component: ConceptRoute,
+  component: lazyRouteComponent(() => import("@/routes/concept"), "ConceptRoute"),
 });
 
 const queriesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/queries",
-  component: QueriesRoute,
+  component: lazyRouteComponent(() => import("@/routes/queries"), "QueriesRoute"),
 });
 
 const queryDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/query/$topic/$slug",
-  component: QueryDetailRoute,
+  component: lazyRouteComponent(() => import("@/routes/query-detail"), "QueryDetailRoute"),
 });
 
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings",
-  component: SettingsRoute,
+  component: lazyRouteComponent(() => import("@/routes/settings"), "SettingsRoute"),
 });
 
 const routeTree = rootRoute.addChildren([
