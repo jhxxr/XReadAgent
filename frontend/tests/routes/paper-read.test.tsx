@@ -7,7 +7,7 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -129,6 +129,16 @@ const TRANSLATION_ENTRY = {
   babeldocVersion: "0.6.2",
 };
 
+/**
+ * The reader keeps all tab panels mounted (forceMount) and hides inactive
+ * ones with the `hidden` attribute, so label/text queries would match the
+ * hidden panels too. Role queries exclude hidden elements — scope toolbar
+ * queries to the single visible tabpanel.
+ */
+function activePanel(): HTMLElement {
+  return screen.getByRole("tabpanel");
+}
+
 describe("PaperReadRoute", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -214,16 +224,16 @@ describe("PaperReadRoute", () => {
 
     // Wait for the page rendering to complete (zoom buttons are disabled while rendering).
     await waitFor(() => {
-      expect(screen.getByLabelText("Zoom in")).not.toBeDisabled();
+      expect(within(activePanel()).getByLabelText("Zoom in")).not.toBeDisabled();
     });
 
     // Zoom in using the toolbar button.
-    const zoomInButton = screen.getByLabelText("Zoom in");
+    const zoomInButton = within(activePanel()).getByLabelText("Zoom in");
     await userEvent.click(zoomInButton);
 
     // Verify zoom level changed.
     await waitFor(() => {
-      expect(screen.getByLabelText(/zoom level/i)).toHaveTextContent("125%");
+      expect(within(activePanel()).getByLabelText(/zoom level/i)).toHaveTextContent("125%");
     });
 
     // Switch to the Original tab.
@@ -235,7 +245,7 @@ describe("PaperReadRoute", () => {
     });
 
     // Zoom level should be preserved across tabs.
-    expect(screen.getByLabelText(/zoom level/i)).toHaveTextContent("125%");
+    expect(within(activePanel()).getByLabelText(/zoom level/i)).toHaveTextContent("125%");
   });
 
   it("preserves page position when switching tabs", async () => {
@@ -261,7 +271,7 @@ describe("PaperReadRoute", () => {
     });
 
     // The page number input should show page 1 (default).
-    const pageInput = screen.getByLabelText(/page number/i);
+    const pageInput = within(activePanel()).getByLabelText(/page number/i);
     expect(pageInput).toHaveValue("1");
 
     // Switch back to Dual tab.
@@ -273,8 +283,64 @@ describe("PaperReadRoute", () => {
     });
 
     // Page number should still be 1 for the dual tab.
-    const pageInputDual = screen.getByLabelText(/page number/i);
+    const pageInputDual = within(activePanel()).getByLabelText(/page number/i);
     expect(pageInputDual).toHaveValue("1");
+  });
+
+  it("keeps PDF documents alive across tab switches without reloading", async () => {
+    writeWorkspacePath("/tmp/ws");
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(mockManifestFetch([TRANSLATION_ENTRY]))
+      .mockResolvedValueOnce(mockPaperFetch());
+
+    renderReader();
+
+    await waitFor(() => {
+      const dual = screen.getByRole("tab", { name: /^dual$/i });
+      expect(dual.getAttribute("data-state")).toBe("active");
+    });
+
+    // All three sources exist; each forceMount panel loads its document once.
+    await waitFor(() => {
+      expect(getDocumentMock).toHaveBeenCalledTimes(3);
+    });
+
+    // Switch away and back.
+    const originalTab = screen.getByRole("tab", { name: /^original$/i });
+    await userEvent.click(originalTab);
+    await waitFor(() => {
+      expect(originalTab.getAttribute("data-state")).toBe("active");
+    });
+
+    const dualTab = screen.getByRole("tab", { name: /^dual$/i });
+    await userEvent.click(dualTab);
+    await waitFor(() => {
+      expect(dualTab.getAttribute("data-state")).toBe("active");
+    });
+
+    // No additional getDocument calls — the documents survived the switches.
+    expect(getDocumentMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("hides inactive reader panels while keeping them mounted", async () => {
+    writeWorkspacePath("/tmp/ws");
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(mockManifestFetch([TRANSLATION_ENTRY]))
+      .mockResolvedValueOnce(mockPaperFetch());
+
+    const { container } = renderReader();
+
+    await waitFor(() => {
+      const dual = screen.getByRole("tab", { name: /^dual$/i });
+      expect(dual.getAttribute("data-state")).toBe("active");
+    });
+
+    const panels = container.querySelectorAll("[role='tabpanel']");
+    expect(panels).toHaveLength(3);
+    const hiddenPanels = Array.from(panels).filter((panel) => panel.hasAttribute("hidden"));
+    expect(hiddenPanels).toHaveLength(2);
+    const visiblePanel = Array.from(panels).find((panel) => !panel.hasAttribute("hidden"));
+    expect(visiblePanel?.getAttribute("data-state")).toBe("active");
   });
 
   it("uses the canonical sourcePath for the original PDF URL", async () => {

@@ -156,12 +156,17 @@ export function PaperReadRoute() {
     [queryClient, workspacePath, slug],
   );
 
-  const handleCurrentPageChange = React.useCallback(
-    (page: number) => {
-      setPageStates((prev) => ({ ...prev, [tab]: page }));
-    },
-    [tab],
-  );
+  // Per-tab page-change callbacks. Each writes only its own tab's slot so a
+  // hidden (forceMount) viewer can never clobber the active tab's position.
+  const handleOriginalPageChange = React.useCallback((page: number) => {
+    setPageStates((prev) => ({ ...prev, original: page }));
+  }, []);
+  const handleDualPageChange = React.useCallback((page: number) => {
+    setPageStates((prev) => ({ ...prev, dual: page }));
+  }, []);
+  const handleTranslatedPageChange = React.useCallback((page: number) => {
+    setPageStates((prev) => ({ ...prev, translated: page }));
+  }, []);
 
   const renderToolbar = React.useCallback(
     (props: PdfToolbarProps) => {
@@ -227,7 +232,18 @@ export function PaperReadRoute() {
               </TabsTrigger>
             </TabsList>
           </div>
-          <TabsContent value="original" className="m-0 min-h-0 flex-1 overflow-hidden">
+          {/* All three panels stay mounted (forceMount) so the loaded PDF
+              documents survive tab switches — without it Radix unmounts the
+              panel, PdfViewer's cleanup destroys the pdfjs loading task, and
+              switching back re-downloads and re-renders the whole document.
+              Radix sets hidden={false} when forceMount is on, so we hide
+              inactive panels ourselves via the explicit hidden attribute. */}
+          <TabsContent
+            forceMount
+            hidden={tab !== "original"}
+            value="original"
+            className="m-0 min-h-0 flex-1 overflow-hidden data-[state=inactive]:hidden"
+          >
             {sources.original !== null ? (
               <PdfViewer
                 url={sources.original}
@@ -235,7 +251,7 @@ export function PaperReadRoute() {
                 zoom={zoom}
                 onZoomChange={setZoom}
                 currentPage={pageStates.original}
-                onCurrentPageChange={handleCurrentPageChange}
+                onCurrentPageChange={handleOriginalPageChange}
                 renderToolbar={renderToolbar}
               />
             ) : (
@@ -246,7 +262,12 @@ export function PaperReadRoute() {
               </EmptyPaneState>
             )}
           </TabsContent>
-          <TabsContent value="dual" className="m-0 min-h-0 flex-1 overflow-hidden">
+          <TabsContent
+            forceMount
+            hidden={tab !== "dual"}
+            value="dual"
+            className="m-0 min-h-0 flex-1 overflow-hidden data-[state=inactive]:hidden"
+          >
             {sources.dual !== null ? (
               <PdfViewer
                 url={sources.dual}
@@ -254,7 +275,7 @@ export function PaperReadRoute() {
                 zoom={zoom}
                 onZoomChange={setZoom}
                 currentPage={pageStates.dual}
-                onCurrentPageChange={handleCurrentPageChange}
+                onCurrentPageChange={handleDualPageChange}
                 renderToolbar={renderToolbar}
               />
             ) : (
@@ -263,7 +284,12 @@ export function PaperReadRoute() {
               </EmptyPaneState>
             )}
           </TabsContent>
-          <TabsContent value="translated" className="m-0 min-h-0 flex-1 overflow-hidden">
+          <TabsContent
+            forceMount
+            hidden={tab !== "translated"}
+            value="translated"
+            className="m-0 min-h-0 flex-1 overflow-hidden data-[state=inactive]:hidden"
+          >
             {sources.mono !== null ? (
               <PdfViewer
                 url={sources.mono}
@@ -271,7 +297,7 @@ export function PaperReadRoute() {
                 zoom={zoom}
                 onZoomChange={setZoom}
                 currentPage={pageStates.translated}
-                onCurrentPageChange={handleCurrentPageChange}
+                onCurrentPageChange={handleTranslatedPageChange}
                 renderToolbar={renderToolbar}
               />
             ) : (

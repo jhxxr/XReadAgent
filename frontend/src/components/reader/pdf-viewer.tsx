@@ -418,6 +418,9 @@ function PdfPages({
     // Find the row closest to the center of the viewport.
     const scrollElement = scrollRef.current;
     if (scrollElement === null) return;
+    // A viewer kept alive inside a hidden tab panel (display:none) measures
+    // zero height; skip page tracking so it can't report a bogus position.
+    if (scrollElement.clientHeight === 0) return;
 
     const viewportCenter = scrollElement.scrollTop + scrollElement.clientHeight / 2;
 
