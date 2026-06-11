@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/06-11-fix-sidecar-not-ready-within-30s-on-packaged-app-startup/prd.md", "reason": "验收点：boot/ready 标记顺序、懒导入守卫、分级超时行为、全部测试通过"}
+{"file": ".trellis/spec/electron/index.md", "reason": "契约文档需与实现同步（Sidecar Lifecycle Contract 更新检查）"}
