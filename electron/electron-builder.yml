@@ -44,15 +44,21 @@ extraResources:
     filter:
       - "**/*"
   # Python virtual environment with xreadagent dependencies installed.
+  # Bytecode is excluded: bundle-python.mjs already prunes it, this filter
+  # is the second line of defense (e.g. local rebuilds after a dev run).
   - from: resources/python-venv
     to: python-venv
     filter:
       - "**/*"
+      - "!**/__pycache__/**"
+      - "!**/*.pyc"
   # XReadAgent Python backend source.
   - from: resources/backend
     to: backend
     filter:
       - "**/*"
+      - "!**/__pycache__/**"
+      - "!**/*.pyc"
   # Pre-built frontend static assets served by the Python sidecar.
   - from: ../frontend/dist
     to: frontend

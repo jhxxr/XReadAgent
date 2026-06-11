@@ -163,6 +163,33 @@ async function checkArchiveUrl(url) {
   console.log(`[bundle-python] Archive URL OK: ${url}`);
 }
 
+/**
+ * Remove __pycache__ directories and stray .pyc files under rootPath.
+ * Returns the number of entries removed.
+ */
+function pruneBytecode(rootPath) {
+  let removed = 0;
+  const stack = [rootPath];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "__pycache__") {
+          fs.rmSync(fullPath, { recursive: true, force: true });
+          removed += 1;
+        } else {
+          stack.push(fullPath);
+        }
+      } else if (entry.name.endsWith(".pyc")) {
+        fs.rmSync(fullPath, { force: true });
+        removed += 1;
+      }
+    }
+  }
+  return removed;
+}
+
 async function main() {
   const targetPlatform = readOptionValue("--platform") ?? PLATFORM;
   const targetArch = readOptionValue("--arch") ?? ARCH;
@@ -293,18 +320,59 @@ async function main() {
 
   run(`uv venv "${venvDir}" --python "${resolvedPythonExe}"`);
 
-  // Install backend dependencies into the venv.
-  // Use a non-editable project install so uv resolves dependencies from the root
-  // pyproject.toml. At runtime, resources/backend is placed on PYTHONPATH so the
-  // packaged source copied below takes precedence over the wheel copy.
+  // Install backend dependencies into the venv, resolved strictly from uv.lock
+  // so the bundled dependency set is reproducible across rebuilds of the same
+  // commit. `uv export --locked` asserts uv.lock is in sync with pyproject.toml
+  // (unlike --frozen, which skips that check), so it doubles as the
+  // lockfile-consistency gate for releases.
+  // At runtime, resources/backend is placed on PYTHONPATH so the packaged
+  // source copied below is the xreadagent code that actually gets imported.
   const venvPythonExe = PLATFORM === "win32"
     ? path.join(venvDir, "Scripts", "python.exe")
     : path.join(venvDir, "bin", "python");
 
-  // Install the backend package dependencies (non-editable) into the venv.
-  // This resolves all transitive deps from pyproject.toml and installs them
-  // into the venv's site-packages.
-  run(`uv pip install --python "${venvPythonExe}" "${rootDir}"`);
+  // Step 2a: export the locked dependency set (without the project itself)
+  // and install it. --no-compile skips .pyc generation (bundle slimming).
+  const requirementsPath = path.join(resourcesDir, "requirements-bundle.txt");
+  run(
+    `uv export --locked --no-dev --no-emit-project --output-file "${requirementsPath}"`,
+    { cwd: rootDir },
+  );
+  run(`uv pip install --python "${venvPythonExe}" --no-compile -r "${requirementsPath}"`);
+  fs.rmSync(requirementsPath, { force: true });
+
+  // Step 2b: install the xreadagent package itself without re-resolving
+  // dependencies. This records the dist-info metadata that
+  // importlib.metadata.version("xreadagent") consumers (api/main.py,
+  // cli/main.py) rely on at runtime.
+  run(`uv pip install --python "${venvPythonExe}" --no-compile --no-deps "${rootDir}"`);
+
+  // Step 2c: drop the wheel copy of the xreadagent source from site-packages.
+  // The runtime imports xreadagent from resources/backend (PYTHONPATH puts it
+  // first — see sidecar.ts buildSidecarEnv), so the site-packages copy is dead
+  // weight and a drift hazard. The dist-info directory is kept on purpose for
+  // importlib.metadata.
+  const sitePackagesDir = PLATFORM === "win32"
+    ? path.join(venvDir, "Lib", "site-packages")
+    : path.join(
+        venvDir,
+        "lib",
+        `python${PYTHON_VERSION.split(".").slice(0, 2).join(".")}`,
+        "site-packages",
+      );
+  const wheelSourceDir = path.join(sitePackagesDir, "xreadagent");
+  if (fs.existsSync(wheelSourceDir)) {
+    fs.rmSync(wheelSourceDir, { recursive: true, force: true });
+    console.log("[bundle-python] Removed duplicate xreadagent source from venv site-packages.");
+  }
+
+  // Step 2d: prune any bytecode that packages ship pre-built. The bundled
+  // CPython runtime under resources/python/ is intentionally NOT pruned —
+  // stripping stdlib bytecode would slow every cold start.
+  const prunedCount = pruneBytecode(venvDir);
+  if (prunedCount > 0) {
+    console.log(`[bundle-python] Pruned ${prunedCount} __pycache__/.pyc entries from the venv.`);
+  }
 
   console.log("[bundle-python] Dependencies installed.");
 
@@ -327,8 +395,16 @@ async function main() {
   }
 
   // Copy src/xreadagent/ -> resources/backend/xreadagent/
+  // Skip bytecode from the dev checkout — it bloats the installer and is
+  // platform/interpreter specific anyway.
   const destXreadagent = path.join(backendOutDir, "xreadagent");
-  fs.cpSync(srcDir, destXreadagent, { recursive: true });
+  fs.cpSync(srcDir, destXreadagent, {
+    recursive: true,
+    filter: (src) => {
+      const base = path.basename(src);
+      return base !== "__pycache__" && !base.endsWith(".pyc");
+    },
+  });
 
   // Copy pyproject.toml for reference (version info, dependency metadata).
   fs.copyFileSync(

@@ -119,7 +119,7 @@ layers and breaks silently if either half is missing:
 - Python package metadata lives at the repository root `pyproject.toml`, not
   `backend/pyproject.toml`.
 - Dependency installation must resolve from the repository root **and honor `uv.lock`**:
-  `bundle-python.mjs` runs `uv export --frozen --no-dev --no-emit-project` and installs the
+  `bundle-python.mjs` runs `uv export --locked --no-dev --no-emit-project` and installs the
   exported requirements into the bundled venv, then installs the `xreadagent` package itself
   with `--no-deps` (Hatch uses
   `[tool.hatch.build.targets.wheel] packages = ["backend/src/xreadagent"]`). After install,
@@ -166,8 +166,9 @@ the dedicated `release` job (`softprops/action-gh-release`), and the app ships *
   frontend/electron package.json, `xreadagent.__version__`, and `uv.lock` in one command). The
   Release workflow fails fast when the pushed tag does not match the pyproject.toml version.
   The workflow does **not** run `uv sync`; lockfile consistency is enforced by
-  `uv export --frozen` inside `bundle-python.mjs` — a stale `uv.lock` still fails the build
-  before packaging begins.
+  `uv export --locked` inside `bundle-python.mjs` (`--locked` asserts the lock matches
+  `pyproject.toml`; `--frozen` would skip that check) — a stale `uv.lock` still fails the
+  build before packaging begins.
 
 > **Gotcha — "Cannot detect repository by .git/config".** If `GH_TOKEN` is present **and** publish
 > is not disabled, electron-builder enters GitHub-publish mode during `afterPack`, tries to generate
