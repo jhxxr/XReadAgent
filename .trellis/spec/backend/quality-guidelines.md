@@ -158,6 +158,38 @@ def convert_with_markitdown(...) -> ConvertResult:
 
 **Audit**: any third-party import with > 100ms cost belongs inside the function, not at module top.
 
+**Startup-path contract (since the 06-10 optimization task)**: the sidecar import path — `import xreadagent`, `xreadagent.api.main`, `xreadagent.cli.main` — must stay **langchain-free**. The package roots (`xreadagent/__init__.py`, `agents/__init__.py`) re-export agent names via PEP 562 `__getattr__` + `TYPE_CHECKING` blocks instead of eager imports (eager imports cost ~0.4s warm / ~78s cold-first-run and threatened the 30s Electron sidecar timeout). Agent imports in `api/` and `cli/` live inside route handlers / job runners / subcommand `run()` bodies.
+
+```python
+# WRONG — defeats the whole lazy-export setup (in any api/ module)
+from xreadagent.agents.ingest import IngestAgent
+
+# Correct — import where it runs
+def _default_runner(...):
+    from xreadagent.agents.ingest import IngestAgent
+    ...
+```
+
+**Enforcement**: `backend/tests/test_lazy_imports.py` subprocess-imports the three entry modules and fails if any `langchain*/langgraph*/deepagents*/langsmith*` module lands in `sys.modules`. New api/cli modules reachable from those entry points are automatically covered.
+
+---
+
+### Pattern: Background job + `/ws/jobs/{job_id}` progress contract
+
+**What**: Long-running operations (anything that can take more than a couple of seconds: LLM agent runs, BabelDOC translation) must NOT block their POST handler. The established pattern — implemented twice now (`translation/service.py` + `api/ingest_jobs.py`) — is:
+
+1. `POST /api/<op>` validates, starts the job, returns `{"jobId": "<uuid4hex>"}` immediately (camelCase REST body).
+2. Events stream over the shared `WS /ws/jobs/{job_id}` channel, resolved in `api/main.py::_resolve_job_event_source` (per-op job map, exact-id lookup).
+3. Event payloads are **snake_case** (matching `translation/events.py`): `stage_start` / `stage_end` / `finish` / `error`; `error` reuses the translation `ErrorEvent` shape (`stage`, `message`, `traceback_excerpt`).
+4. Events are buffered per job and **replayed to late subscribers** (a fast-finishing job must not strand the UI).
+5. Failures append a `<op>_error` record to `state/conversation-log.jsonl`.
+
+**Why**: One job/WS convention means the frontend has a single subscription helper shape (`lib/ingest-job.ts` mirrors `translate-dialog.tsx`) and the contract stays auditable. A second convention would double the failure modes at the hardest boundary we have.
+
+**Tests required** (see `test_ingest_job_service.py` / `test_ingest_jobs_api.py` for the template): event ordering, error event + conversation-log record, late-subscriber replay, WS resolution precedence, and — if the runner imports agents — the lazy-import guard staying green.
+
+**Anti-pattern**: a new long-running endpoint returning its result synchronously "because it's usually fast", or inventing a bespoke polling endpoint instead of the shared WS channel.
+
 ---
 
 ### Pattern: SIDECAR_READY contract (cross-layer)
@@ -281,6 +313,8 @@ When reviewing a PR:
 - [ ] Every new `BaseModel` extends `_Strict` (or has a documented reason not to)
 - [ ] camelCase vs snake_case matches the schema family (state JSON vs agent plan vs frontmatter)
 - [ ] No imports from `langchain*` outside `xreadagent.agents.*` and `xreadagent.translation.*`
+- [ ] Sidecar startup path stays langchain-free: no module-level agent imports in `api/`/`cli/`; `test_lazy_imports.py` green
+- [ ] New long-running endpoint follows the job + `/ws/jobs` progress contract (no blocking POST)
 - [ ] All state writes route through `wiki/atomic.py` helpers
 - [ ] New agent has a `Planner` Protocol seam + a stub-planner test
 - [ ] No `embed|vector|sqlite-vec|faiss|chroma` strings appear (D8 audit)

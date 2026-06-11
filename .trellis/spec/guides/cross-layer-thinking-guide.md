@@ -46,6 +46,10 @@ For each boundary:
 - What is the exact output format?
 - What errors can occur?
 
+### Step 4: Long-running operation? Use the job + WS pattern
+
+If the backend work can take more than a couple of seconds (LLM call, subprocess, conversion), do NOT design a blocking POST. Reuse the established job contract — POST returns `{jobId}`, progress streams over `WS /ws/jobs/{job_id}`, snake_case events, buffered replay. Two reference implementations exist: translation (`translation/service.py` ↔ `translate-dialog.tsx`) and ingest (`api/ingest_jobs.py` ↔ `lib/ingest-job.ts`). Full contract: `backend/quality-guidelines.md` → "Background job + /ws/jobs progress contract".
+
 ---
 
 ## Electron ↔ Renderer Boundary (Phase 3)
