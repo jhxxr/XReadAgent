@@ -16,23 +16,25 @@ import { ThemeProvider } from "@/lib/theme";
 import { writeWorkspacePath } from "@/lib/workspace";
 import { WorkspaceRoute } from "@/routes/workspace";
 
-const { getConcepts, getPapers, getQueries, postIngest } = vi.hoisted(() => ({
+const { getConcepts, getPapers, getQueries, runIngestJob } = vi.hoisted(() => ({
   getConcepts: vi.fn(),
   getPapers: vi.fn(),
   getQueries: vi.fn(),
-  postIngest: vi.fn(),
+  runIngestJob: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
   getConcepts,
   getPapers,
   getQueries,
-  postIngest,
 }));
+
+vi.mock("@/lib/ingest-job", () => ({ runIngestJob }));
 
 vi.mock("sonner", () => ({
   toast: {
     error: vi.fn(),
+    loading: vi.fn(),
     success: vi.fn(),
   },
 }));
@@ -112,12 +114,14 @@ describe("Workspace empty state", () => {
     getPapers.mockResolvedValue([]);
     getConcepts.mockResolvedValue([]);
     getQueries.mockResolvedValue([]);
-    postIngest.mockResolvedValue({
+    runIngestJob.mockResolvedValue({
+      type: "finish",
       slug: "paper",
       title: "Paper",
-      cacheHit: false,
-      filesTouched: [],
-      durationS: 1,
+      cache_hit: false,
+      files_touched: [],
+      duration_s: 1,
+      ts: "2026-06-11T00:00:00Z",
     });
   });
 
@@ -149,10 +153,13 @@ describe("Workspace empty state", () => {
     await user.click(await screen.findByRole("button", { name: /import paper/i }));
 
     expect(api.showOpenFileDialog).toHaveBeenCalledWith("Import Paper");
-    expect(postIngest).toHaveBeenCalledWith({
-      workspacePath: "/tmp/ws",
-      filePath: "/tmp/paper.pdf",
-    });
+    expect(runIngestJob).toHaveBeenCalledWith(
+      {
+        workspacePath: "/tmp/ws",
+        filePath: "/tmp/paper.pdf",
+      },
+      expect.anything(),
+    );
   });
 
   it("chooses a workspace first when importing without an active workspace", async () => {
@@ -164,9 +171,12 @@ describe("Workspace empty state", () => {
 
     expect(api.showOpenFolderDialog).toHaveBeenCalledWith("Open Workspace");
     expect(api.showOpenFileDialog).toHaveBeenCalledWith("Import Paper");
-    expect(postIngest).toHaveBeenCalledWith({
-      workspacePath: "/tmp/ws",
-      filePath: "/tmp/paper.pdf",
-    });
+    expect(runIngestJob).toHaveBeenCalledWith(
+      {
+        workspacePath: "/tmp/ws",
+        filePath: "/tmp/paper.pdf",
+      },
+      expect.anything(),
+    );
   });
 });

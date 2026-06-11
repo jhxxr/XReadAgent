@@ -6,17 +6,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkspaceActions } from "@/lib/use-workspace-actions";
 import { writeWorkspacePath } from "@/lib/workspace";
+import type { IngestFinishEvent, IngestStageName } from "@/types/api";
 
-const { postIngest, toast } = vi.hoisted(() => ({
-  postIngest: vi.fn(),
+const { runIngestJob, toast } = vi.hoisted(() => ({
+  runIngestJob: vi.fn(),
   toast: {
     error: vi.fn(),
     info: vi.fn(),
+    loading: vi.fn(),
     success: vi.fn(),
   },
 }));
 
-vi.mock("@/lib/api", () => ({ postIngest }));
+vi.mock("@/lib/ingest-job", () => ({ runIngestJob }));
 vi.mock("sonner", () => ({ toast }));
 
 const getPathForFile = vi.fn();
@@ -31,6 +33,18 @@ function removeElectronApi() {
 
 function makeFile(name: string): File {
   return new File(["content"], name, { type: "application/octet-stream" });
+}
+
+function makeFinishEvent(): IngestFinishEvent {
+  return {
+    type: "finish",
+    slug: "paper",
+    title: "Paper",
+    cache_hit: false,
+    files_touched: [],
+    duration_s: 1,
+    ts: "2026-06-11T00:00:00Z",
+  };
 }
 
 function renderActions() {
@@ -62,20 +76,14 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
     writeWorkspacePath("/tmp/ws");
     installElectronApi();
     getPathForFile.mockReturnValue("C:\\papers\\paper.pdf");
-    postIngest.mockResolvedValue({
-      slug: "paper",
-      title: "Paper",
-      cacheHit: false,
-      filesTouched: [],
-      durationS: 1,
-    });
+    runIngestJob.mockResolvedValue(makeFinishEvent());
   });
 
   afterEach(() => {
     removeElectronApi();
   });
 
-  it("ingests a dropped PDF through the same path-based API as the picker flow", async () => {
+  it("starts an ingest job for a dropped PDF through the same path-based flow as the picker", async () => {
     const { result } = renderActions();
     const file = makeFile("paper.pdf");
 
@@ -85,10 +93,59 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
 
     expect(getPathForFile).toHaveBeenCalledWith(file);
     await waitFor(() => {
-      expect(postIngest).toHaveBeenCalledWith({
-        workspacePath: "/tmp/ws",
-        filePath: "C:\\papers\\paper.pdf",
-      });
+      expect(runIngestJob).toHaveBeenCalledWith(
+        {
+          workspacePath: "/tmp/ws",
+          filePath: "C:\\papers\\paper.pdf",
+        },
+        expect.objectContaining({ onStage: expect.any(Function) as unknown }),
+      );
+    });
+  });
+
+  it("shows job phase progress through the loading toast and success on finish", async () => {
+    runIngestJob.mockImplementation(
+      (_req: unknown, opts: { onStage?: (stage: IngestStageName) => void }) => {
+        opts.onStage?.("converting");
+        opts.onStage?.("writing");
+        return Promise.resolve(makeFinishEvent());
+      },
+    );
+    const { result } = renderActions();
+
+    await act(async () => {
+      await result.current.importDroppedFiles([makeFile("paper.pdf")]);
+    });
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith(
+        "Imported Paper",
+        expect.objectContaining({ id: "ingest-progress" }),
+      );
+    });
+    expect(toast.loading).toHaveBeenCalledWith(
+      "Importing document",
+      expect.objectContaining({ description: expect.stringMatching(/converting/i) as string }),
+    );
+    expect(toast.loading).toHaveBeenCalledWith(
+      "Importing document",
+      expect.objectContaining({ description: expect.stringMatching(/writing wiki pages/i) as string }),
+    );
+  });
+
+  it("surfaces a job failure through the error toast", async () => {
+    runIngestJob.mockRejectedValue(new Error("MarkItDown blew up"));
+    const { result } = renderActions();
+
+    await act(async () => {
+      await result.current.importDroppedFiles([makeFile("paper.pdf")]);
+    });
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        "Import failed",
+        expect.objectContaining({ description: "MarkItDown blew up" }),
+      );
     });
   });
 
@@ -100,7 +157,7 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
     });
 
     expect(toast.error).toHaveBeenCalledWith("Unsupported file type", expect.anything());
-    expect(postIngest).not.toHaveBeenCalled();
+    expect(runIngestJob).not.toHaveBeenCalled();
   });
 
   it("imports only the first supported file when several are dropped", async () => {
@@ -116,7 +173,7 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
     expect(getPathForFile).toHaveBeenCalledWith(first);
     expect(toast.info).toHaveBeenCalled();
     await waitFor(() => {
-      expect(postIngest).toHaveBeenCalledTimes(1);
+      expect(runIngestJob).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -141,7 +198,7 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
     });
 
     expect(toast.error).toHaveBeenCalledWith("Import is only available in the desktop app");
-    expect(postIngest).not.toHaveBeenCalled();
+    expect(runIngestJob).not.toHaveBeenCalled();
   });
 
   it("surfaces an error when the file path cannot be resolved", async () => {
@@ -153,11 +210,11 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
     });
 
     expect(toast.error).toHaveBeenCalledWith("Import failed", expect.anything());
-    expect(postIngest).not.toHaveBeenCalled();
+    expect(runIngestJob).not.toHaveBeenCalled();
   });
 
-  it("blocks a second drop while an import is already running", async () => {
-    postIngest.mockReturnValue(new Promise(() => undefined));
+  it("blocks a second drop while an import job is already running", async () => {
+    runIngestJob.mockReturnValue(new Promise(() => undefined));
     const { result } = renderActions();
 
     await act(async () => {
@@ -172,11 +229,11 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
     });
 
     expect(toast.error).toHaveBeenCalledWith("Import already in progress", expect.anything());
-    expect(postIngest).toHaveBeenCalledTimes(1);
+    expect(runIngestJob).toHaveBeenCalledTimes(1);
   });
 
-  it("blocks a drop while an import started by ANOTHER hook instance is running", async () => {
-    postIngest.mockReturnValue(new Promise(() => undefined));
+  it("blocks a drop while a job started by ANOTHER hook instance is running", async () => {
+    runIngestJob.mockReturnValue(new Promise(() => undefined));
     const { result } = renderTwoActionInstances();
 
     await act(async () => {
@@ -192,7 +249,7 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
     });
 
     expect(toast.error).toHaveBeenCalledWith("Import already in progress", expect.anything());
-    expect(postIngest).toHaveBeenCalledTimes(1);
+    expect(runIngestJob).toHaveBeenCalledTimes(1);
   });
 
   it("does nothing when the drop contains no files", async () => {
@@ -202,7 +259,7 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
       await result.current.importDroppedFiles([]);
     });
 
-    expect(postIngest).not.toHaveBeenCalled();
+    expect(runIngestJob).not.toHaveBeenCalled();
     expect(toast.error).not.toHaveBeenCalled();
   });
 });

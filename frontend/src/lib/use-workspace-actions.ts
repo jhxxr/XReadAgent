@@ -2,9 +2,10 @@
 import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { postIngest } from "@/lib/api";
+import { runIngestJob } from "@/lib/ingest-job";
 import { getElectronAPI, isElectron } from "@/lib/platform";
 import { useWorkspacePath, writeWorkspacePath } from "@/lib/workspace";
+import type { IngestStageName } from "@/types/api";
 
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -30,9 +31,24 @@ interface IngestArgs {
 /**
  * Shared mutation key so the in-flight guard and `isImporting` see ingests
  * started by ANY `useWorkspaceActions` instance (the workspace header, the
- * empty state, and the drop zone each render their own instance).
+ * empty state, and the drop zone each render their own instance). The
+ * mutation stays pending for the WHOLE background job (POST + WS stream),
+ * so "busy" means "job in flight", not just "request in flight".
  */
 const INGEST_MUTATION_KEY = ["ingest"] as const;
+
+/**
+ * Stable toast id: the loading toast is updated in place as the job reports
+ * phases, then replaced by the success / error toast. Only one ingest can
+ * run at a time (see the in-flight guard), so a single id is enough.
+ */
+const INGEST_TOAST_ID = "ingest-progress";
+
+const INGEST_STAGE_LABEL: Record<IngestStageName, string> = {
+  converting: "Converting the document to markdown…",
+  analyzing: "Analyzing the paper with the model…",
+  writing: "Writing wiki pages…",
+};
 
 export function useWorkspaceActions() {
   const queryClient = useQueryClient();
@@ -41,15 +57,39 @@ export function useWorkspaceActions() {
 
   const ingestMutation = useMutation({
     mutationKey: INGEST_MUTATION_KEY,
-    mutationFn: ({ filePath, workspacePath }: IngestArgs) => postIngest({ workspacePath, filePath }),
+    mutationFn: ({ filePath, workspacePath }: IngestArgs) => {
+      toast.loading("Importing document", {
+        id: INGEST_TOAST_ID,
+        description: "Starting the import job…",
+      });
+      return runIngestJob(
+        { workspacePath, filePath },
+        {
+          onStage: (stage) => {
+            toast.loading("Importing document", {
+              id: INGEST_TOAST_ID,
+              description: INGEST_STAGE_LABEL[stage],
+            });
+          },
+        },
+      );
+    },
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ["papers"] });
       void queryClient.invalidateQueries({ queryKey: ["concepts"] });
       void queryClient.invalidateQueries({ queryKey: ["queries"] });
-      toast.success(`Imported ${result.title}`);
+      toast.success(`Imported ${result.title}`, {
+        id: INGEST_TOAST_ID,
+        description: result.cache_hit
+          ? "Already in the wiki — nothing changed."
+          : undefined,
+      });
     },
     onError: (error) => {
-      toast.error("Import failed", { description: describeError(error) });
+      toast.error("Import failed", {
+        id: INGEST_TOAST_ID,
+        description: describeError(error),
+      });
     },
   });
 

@@ -6,8 +6,9 @@ All routes are prefixed with ``/api/wiki`` (papers, concepts, queries,
 index, overview) or ``/api`` (ingest, query).
 
 Read-only wiki endpoints parse frontmatter + content from the markdown
-pages on disk. Ingest and query delegates to the existing agent
-orchestrators.
+pages on disk. Ingest starts a background job (progress over
+``/ws/jobs/{job_id}``, see ``api/ingest_jobs.py``); query delegates to the
+query orchestrator synchronously.
 """
 
 from __future__ import annotations
@@ -16,9 +17,10 @@ import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from xreadagent.api.ingest_jobs import IngestJobRequest, IngestJobService
 from xreadagent.wiki.frontmatter_utils import (
     list_concepts,
     list_papers,
@@ -77,12 +79,10 @@ class IngestRequest(_Strict):
     model: str | None = None
 
 
-class IngestResultResponse(_Strict):
-    slug: str
-    title: str
-    cacheHit: bool = False
-    filesTouched: list[str] = Field(default_factory=list)
-    durationS: float = 0.0
+class IngestJobResponse(_Strict):
+    """Body of the ``POST /api/ingest`` reply — camelCase per wire convention."""
+
+    jobId: str
 
 
 class QueryRequest(_Strict):
@@ -273,37 +273,45 @@ async def get_overview(
 # -- Ingest ---------------------------------------------------------------
 
 
-@wiki_router.post("/ingest", response_model=IngestResultResponse)
-async def post_ingest(req: IngestRequest) -> IngestResultResponse:
-    """Ingest a document into the wiki.
+@wiki_router.post("/ingest", response_model=IngestJobResponse)
+async def post_ingest(req: IngestRequest, request: Request) -> IngestJobResponse:
+    """Start an ingest job and return its ``jobId`` immediately.
 
-    Constructs an ``IngestAgent`` with the resolved model string and delegates
-    to the ingest orchestrator.
+    The ingest itself (conversion + LLM agent + wiki write-out) runs in the
+    background; progress streams over ``/ws/jobs/{job_id}`` as
+    ``stage_start`` / ``stage_end`` / ``finish`` / ``error`` events — same
+    job contract as ``POST /api/translate``.
     """
-    from xreadagent.agents.ingest import IngestAgent
-    from xreadagent.agents.orchestrator import ingest_source
-
     workspace = _open_workspace(req.workspacePath)
     raw_path = Path(req.filePath)
     if not raw_path.exists():
         raise HTTPException(status_code=422, detail=f"file not found: {req.filePath}")
 
     model = _resolve_model(req.model)
-    agent = IngestAgent(workspace, model=model)
+    service: IngestJobService | None = getattr(request.app.state, "ingest_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=503,
+            detail="ingest service not configured on this sidecar instance",
+        )
+    job_request = IngestJobRequest(
+        workspace_path=workspace.root,
+        file_path=raw_path,
+        model=model,
+        title=req.title,
+    )
     try:
-        result = await ingest_source(workspace, raw_path, agent=agent, title=req.title)
+        job_id = service.start_ingest(job_request)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    return IngestResultResponse(
-        slug=result.source.slug,
-        title=result.source.title,
-        cacheHit=result.cache_hit,
-        filesTouched=result.files_touched,
-        durationS=result.duration_s,
-    )
+    # Map the job back to its service so the WS handler can resolve it —
+    # same discipline as ``translation_services_by_job`` (see
+    # ``.trellis/spec/backend/error-handling.md``).
+    by_job: dict[str, IngestJobService] = request.app.state.ingest_services_by_job
+    by_job[job_id] = service
+    return IngestJobResponse(jobId=job_id)
 
 
 # -- Query ----------------------------------------------------------------

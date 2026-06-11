@@ -12,6 +12,10 @@ Translation surface (Phase 2A):
 - ``WS /ws/jobs/{job_id}``     → streams :class:`TranslationEvent` JSON
   objects; closes on ``finish`` / ``error``.
 
+``POST /api/ingest`` (wiki_router) follows the same job contract: it returns
+``{jobId}`` immediately and streams :mod:`xreadagent.api.ingest_jobs` events
+over the same ``/ws/jobs/{job_id}`` channel.
+
 The :class:`TranslationService` instance lives on ``app.state.translation``
 so tests can inject a stub via ``create_app(translation_service=...)``.
 """
@@ -21,10 +25,10 @@ from __future__ import annotations
 import importlib.metadata
 import os
 import re
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +37,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.websockets import WebSocketState
 
+from xreadagent.api.ingest_jobs import IngestJobService
 from xreadagent.api.settings import (
     AppSettings,
     UpdateSettingsRequest,
@@ -92,13 +97,16 @@ def create_app(
     lifespan: Lifespan | None = None,
     translation_service: TranslationService | None = None,
     translation_service_factory: Callable[[Workspace], TranslationService] | None = None,
+    ingest_service: IngestJobService | None = None,
 ) -> FastAPI:
     """Build the FastAPI app.
 
     ``translation_service`` pins one service instance for the lifetime of the
     app (used by tests). ``translation_service_factory`` lets the production
     flow lazily build per-workspace services on first ``POST /api/translate``
-    — kept for symmetry; tests don't use it.
+    — kept for symmetry; tests don't use it. ``ingest_service`` pins the
+    ingest job service (tests inject a stub); production uses the default
+    :class:`IngestJobService`, which is workspace-agnostic.
     """
     app = FastAPI(title="XReadAgent sidecar", version=_version(), lifespan=lifespan)
 
@@ -116,6 +124,13 @@ def create_app(
     app.state.translation_service_factory = translation_service_factory
     app.state.translation_services_by_workspace = {}
     app.state.translation_services_by_job = {}
+
+    # Ingest jobs share the same /ws/jobs/{job_id} channel as translations;
+    # the by-job map lets the WS handler resolve which service owns a job.
+    app.state.ingest_service = (
+        ingest_service if ingest_service is not None else IngestJobService()
+    )
+    app.state.ingest_services_by_job = {}
 
     # Include the wiki + ingest/query router.
     app.include_router(wiki_router, prefix="/api")
@@ -198,9 +213,9 @@ def create_app(
 
     @app.websocket("/ws/jobs/{job_id}")
     async def job_events(websocket: WebSocket, job_id: str) -> None:
-        service = _resolve_translation_service_for_job(app, job_id)
+        service = _resolve_job_event_source(app, job_id)
         if service is None:
-            await websocket.close(code=1008, reason="translation service not configured")
+            await websocket.close(code=1008, reason="no event source for this job")
             return
         await websocket.accept()
         try:
@@ -409,6 +424,32 @@ def _resolve_translation_service_for_job(app: FastAPI, job_id: str) -> Translati
         return pinned
     by_job: dict[str, TranslationService] = app.state.translation_services_by_job
     return by_job.get(job_id)
+
+
+class _JobEventSource(Protocol):
+    """Anything ``/ws/jobs/{job_id}`` can stream from.
+
+    Both :class:`TranslationService` and :class:`IngestJobService` satisfy
+    this: an async generator of Pydantic events that ends after the terminal
+    ``finish`` / ``error`` event and raises ``KeyError`` for unknown jobs.
+    """
+
+    def event_stream(self, job_id: str) -> AsyncIterator[Any]: ...
+
+
+def _resolve_job_event_source(app: FastAPI, job_id: str) -> _JobEventSource | None:
+    """Resolve which service owns ``job_id`` for the shared WS jobs channel.
+
+    Ingest jobs are matched exactly via the by-job map populated by
+    ``POST /api/ingest``; everything else falls back to the translation
+    resolution (pinned service first, then the translate by-job map) so the
+    pre-existing translate contract is unchanged.
+    """
+    ingest_by_job: dict[str, IngestJobService] = app.state.ingest_services_by_job
+    ingest_service = ingest_by_job.get(job_id)
+    if ingest_service is not None:
+        return ingest_service
+    return _resolve_translation_service_for_job(app, job_id)
 
 
 app = create_app()

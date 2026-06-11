@@ -16,23 +16,25 @@ import { ThemeProvider } from "@/lib/theme";
 import { writeWorkspacePath } from "@/lib/workspace";
 import { WorkspaceRoute } from "@/routes/workspace";
 
-const { getConcepts, getPapers, getQueries, postIngest } = vi.hoisted(() => ({
+const { getConcepts, getPapers, getQueries, runIngestJob } = vi.hoisted(() => ({
   getConcepts: vi.fn(),
   getPapers: vi.fn(),
   getQueries: vi.fn(),
-  postIngest: vi.fn(),
+  runIngestJob: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
   getConcepts,
   getPapers,
   getQueries,
-  postIngest,
 }));
+
+vi.mock("@/lib/ingest-job", () => ({ runIngestJob }));
 
 vi.mock("sonner", () => ({
   toast: {
     error: vi.fn(),
+    loading: vi.fn(),
     success: vi.fn(),
   },
 }));
@@ -111,12 +113,14 @@ describe("Workspace tabs", () => {
         archivedAt: "2026-06-02T00:00:00Z",
       },
     ]);
-    postIngest.mockResolvedValue({
+    runIngestJob.mockResolvedValue({
+      type: "finish",
       slug: "paper",
       title: "Paper",
-      cacheHit: false,
-      filesTouched: [],
-      durationS: 1,
+      cache_hit: false,
+      files_touched: [],
+      duration_s: 1,
+      ts: "2026-06-11T00:00:00Z",
     });
   });
 

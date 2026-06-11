@@ -3,7 +3,7 @@ import type {
   AppSettings,
   HealthzResponse,
   IngestRequest,
-  IngestResultResponse,
+  IngestJobResponse,
   PaperSummary,
   ConceptSummary,
   QuerySummary,
@@ -258,9 +258,12 @@ export async function getWikiOverview(workspacePath: string): Promise<{ content:
   );
 }
 
-/** Ingest a document into the wiki. */
-export async function postIngest(req: IngestRequest): Promise<IngestResultResponse> {
-  return request<IngestResultResponse>("/ingest", {
+/**
+ * Start an ingest job for a document. Returns the new `jobId` on success;
+ * subscribe to `/ws/jobs/{jobId}` (see `lib/ingest-job.ts`) for progress.
+ */
+export async function postIngest(req: IngestRequest): Promise<IngestJobResponse> {
+  return request<IngestJobResponse>("/ingest", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),

@@ -13,6 +13,7 @@ case — see ``IngestResult.cache_hit``.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from xreadagent.agents.ingest import IngestAgent, IngestResult
@@ -26,13 +27,22 @@ async def ingest_source(
     *,
     agent: IngestAgent,
     title: str | None = None,
+    on_phase: Callable[[str], None] | None = None,
 ) -> IngestResult:
     """Convert ``raw_path`` then drive ``agent.ingest`` to produce the wiki pages.
 
     Short-circuits when both the source manifest already knows the content
     hash AND ``wiki/papers/{slug}.md`` exists — that's a "previously ingested,
     nothing changed" hit and we skip the LLM call entirely.
+
+    ``on_phase`` is an optional progress hook (used by the job-based API
+    surface): called with ``"converting"`` before the pipeline conversion and
+    ``"analyzing"`` before the LLM call; ``agent.ingest`` additionally reports
+    ``"writing"`` before the deterministic write-out. Existing callers (CLI,
+    MCP tools) omit it and behave exactly as before.
     """
+    if on_phase is not None:
+        on_phase("converting")
     convert_result, source = convert_source(workspace, raw_path, title=title)
 
     paper_path = workspace.papers_dir / f"{source.slug}.md"
@@ -77,7 +87,13 @@ async def ingest_source(
         )
 
     start = time.monotonic()
-    result = await agent.ingest(source, convert_result.output_path)
+    if on_phase is not None:
+        on_phase("analyzing")
+        result = await agent.ingest(source, convert_result.output_path, on_phase=on_phase)
+    else:
+        # Keep the legacy call shape so injected test doubles that don't
+        # accept the hook keep working unchanged.
+        result = await agent.ingest(source, convert_result.output_path)
 
     # Preserve the per-call duration; agent.ingest already populates it but
     # callers might want the wall-clock from this orchestrator (which includes

@@ -321,16 +321,10 @@ describe("api client", () => {
     expect(result).toEqual(page);
   });
 
-  it("posts /ingest and returns the result", async () => {
-    const ingestResult = {
-      slug: "paper",
-      title: "Paper",
-      cacheHit: false,
-      filesTouched: [],
-      durationS: 1.0,
-    };
+  it("posts /ingest and returns the job id", async () => {
+    const jobResponse = { jobId: "ingest-job-1" };
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify(ingestResult), {
+      new Response(JSON.stringify(jobResponse), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
@@ -340,7 +334,7 @@ describe("api client", () => {
       filePath: "/tmp/ws/raw/paper.pdf",
       model: "anthropic:claude-fake",
     });
-    expect(result).toEqual(ingestResult);
+    expect(result).toEqual(jobResponse);
     const call = vi.mocked(globalThis.fetch).mock.calls[0];
     expect(call).toBeDefined();
     const [, init] = call!;

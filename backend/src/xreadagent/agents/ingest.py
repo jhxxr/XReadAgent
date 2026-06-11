@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from importlib import resources
@@ -523,13 +524,28 @@ class IngestAgent:
         """Read-only ``max_tokens`` the default planner uses for chat replies."""
         return self._max_tokens
 
-    async def ingest(self, source: Source, extract_path: Path) -> IngestResult:
+    async def ingest(
+        self,
+        source: Source,
+        extract_path: Path,
+        *,
+        on_phase: Callable[[str], None] | None = None,
+    ) -> IngestResult:
+        """Plan + apply one ingest.
+
+        ``on_phase`` is an optional progress hook used by the job-based API
+        surface: called with ``"writing"`` right before ``apply_plan`` (the
+        caller — ``agents.orchestrator.ingest_source`` — reports the earlier
+        ``converting`` / ``analyzing`` phases).
+        """
         if not extract_path.exists():
             raise FileNotFoundError(f"extract not found: {extract_path}")
         extract_md = extract_path.read_text(encoding="utf-8")
         start = time.monotonic()
         prompt = self._build_prompt(source, extract_md)
         plan = self._planner(prompt, schema=IngestPlan)
+        if on_phase is not None:
+            on_phase("writing")
         files_touched = apply_plan(self._workspace, plan, source)
         return IngestResult(
             source=source,

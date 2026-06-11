@@ -174,14 +174,44 @@ export interface IngestRequest {
   model?: string;
 }
 
-/** Response shape for `POST /api/ingest`. */
-export interface IngestResultResponse {
+/**
+ * Response shape for `POST /api/ingest` — the ingest now runs as a background
+ * job (same contract as `POST /api/translate`); progress streams over
+ * `/ws/jobs/{jobId}`.
+ */
+export interface IngestJobResponse {
+  jobId: string;
+}
+
+/**
+ * Phase-level ingest pipeline tokens, in execution order. Mirrors
+ * `IngestStageName` in `backend/src/xreadagent/api/ingest_jobs.py`.
+ */
+export type IngestStageName = "converting" | "analyzing" | "writing";
+
+/** One of `stage_start` / `stage_end` for an ingest phase. */
+export interface IngestStageEvent {
+  type: "stage_start" | "stage_end";
+  stage: IngestStageName;
+  ts: string;
+}
+
+/** Terminal success event for an ingest job. */
+export interface IngestFinishEvent {
+  type: "finish";
   slug: string;
   title: string;
-  cacheHit: boolean;
-  filesTouched: string[];
-  durationS: number;
+  cache_hit: boolean;
+  files_touched: string[];
+  duration_s: number;
+  ts: string;
 }
+
+/**
+ * Discriminated union of all WS events an ingest job pushes. The terminal
+ * failure event reuses the translation `ErrorEvent` shape.
+ */
+export type IngestJobEvent = IngestStageEvent | IngestFinishEvent | ErrorEvent;
 
 /** Body of `POST /api/query`. */
 export interface QueryRequest {
