@@ -1,79 +1,48 @@
 # Thinking Guides
 
-> **Purpose**: Expand your thinking to catch things you might not have considered.
-
----
-
-## Why Thinking Guides?
-
-**Most bugs and tech debt come from "didn't think of that"**, not from lack of skill:
-
-- Didn't think about what happens at layer boundaries → cross-layer bugs
-- Didn't think about code patterns repeating → duplicated code everywhere
-- Didn't think about edge cases → runtime errors
-- Didn't think about future maintainers → unreadable code
-
-These guides help you **ask the right questions before coding**.
-
----
+Use these guides before and during implementation to catch cross-layer drift and accidental duplication in XReadAgent.
 
 ## Available Guides
 
-| Guide | Purpose | When to Use |
-|-------|---------|-------------|
-| [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Identify patterns and reduce duplication | When you notice repeated patterns |
-| [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers | Features spanning multiple layers |
+| Guide | Purpose | When To Use |
+| --- | --- | --- |
+| [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Find existing helpers, constants, components, and service patterns before adding new ones. | Before creating utilities, protocol constants, UI primitives, or repeated tests. |
+| [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Trace data across backend, frontend, Electron, and workspace storage boundaries. | When a change touches API schemas, job events, sidecar startup, native file flows, or persisted workspace files. |
 
----
+## Quick Triggers
 
-## Quick Reference: Thinking Triggers
+Read the cross-layer guide when:
 
-### When to Think About Cross-Layer Issues
+- A feature touches two or more of `backend/`, `frontend/`, and `electron/`.
+- A backend Pydantic model or frontend API type changes.
+- A WebSocket event, settings payload, or translation/ingest job shape changes.
+- Workspace-relative paths, served files, or native file selection behavior changes.
+- Browser dev mode and Electron mode both need to keep working.
 
-- [ ] Feature touches 3+ layers (API, Service, Component, Database)
-- [ ] Data format changes between layers
-- [ ] Multiple consumers need the same data
-- [ ] You're not sure where to put some logic
+Read the code reuse guide when:
 
-→ Read [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md)
+- You are adding a new helper, hook, component primitive, service, event type, or constant.
+- You are copying a value such as supported file suffixes, route prefixes, stage names, model/provider fields, or workspace directory names.
+- You are making similar edits in multiple files.
 
-### When to Think About Code Reuse
+## Pre-Modification Rule
 
-- [ ] You're writing similar code to something that exists
-- [ ] You see the same pattern repeated 3+ times
-- [ ] You're adding a new field to multiple places
-- [ ] **You're modifying any constant or config**
-- [ ] **You're creating a new utility/helper function** ← Search first!
-
-→ Read [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md)
-
----
-
-## Pre-Modification Rule (CRITICAL)
-
-> **Before changing ANY value, ALWAYS search first!**
+Before changing any shared value or contract, search first:
 
 ```bash
-# Search for the value you're about to change
-grep -r "value_to_change" .
+rg "value_or_contract_name" .
 ```
 
-This single habit prevents most "forgot to update X" bugs.
+For cross-layer contracts, search both sides of the boundary. Examples:
 
----
+```bash
+rg "jobId|job_id" backend frontend electron
+rg "workspacePath" backend frontend
+rg "SIDECAR_READY|sidecarPort" backend frontend electron
+```
 
-## How to Use This Directory
+## How To Use This Directory
 
-1. **Before coding**: Skim the relevant thinking guide
-2. **During coding**: If something feels repetitive or complex, check the guides
-3. **After bugs**: Add new insights to the relevant guide (learn from mistakes)
-
----
-
-## Contributing
-
-Found a new "didn't think of that" moment? Add it to the relevant guide.
-
----
-
-**Core Principle**: 30 minutes of thinking saves 3 hours of debugging.
+1. Read the relevant layer spec index first, such as `.trellis/spec/backend/index.md`.
+2. Use these guides when the task crosses layers or starts to duplicate existing patterns.
+3. If a bug teaches a new durable rule, update the owning layer spec or guide in the same task.

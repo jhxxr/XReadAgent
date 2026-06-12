@@ -1,105 +1,64 @@
 # Code Reuse Thinking Guide
 
-> **Purpose**: Stop and think before creating new code - does it already exist?
+Use this guide before creating new helpers, constants, components, event shapes, or service abstractions.
 
----
+## Search First
 
-## The Problem
-
-**Duplicated code is the #1 source of inconsistency bugs.**
-
-When you copy-paste or rewrite existing logic:
-- Bug fixes don't propagate
-- Behavior diverges over time
-- Codebase becomes harder to understand
-
----
-
-## Before Writing New Code
-
-### Step 1: Search First
+Prefer `rg`:
 
 ```bash
-# Search for similar function names
-grep -r "functionName" .
-
-# Search for similar logic
-grep -r "keyword" .
+rg "function_or_constant_name" backend frontend electron
+rg "similar keyword" backend frontend electron
 ```
 
-### Step 2: Ask These Questions
+Search for both protocol spellings when relevant:
 
-| Question | If Yes... |
-|----------|-----------|
-| Does a similar function exist? | Use or extend it |
-| Is this pattern used elsewhere? | Follow the existing pattern |
-| Could this be a shared utility? | Create it in the right place |
-| Am I copying code from another file? | **STOP** - extract to shared |
+```bash
+rg "jobId|job_id" backend frontend electron
+rg "targetLang|target_lang" backend frontend
+```
 
----
+## Common Duplication Risks In This Repo
 
-## Common Duplication Patterns
+### API And Event Shapes
 
-### Pattern 1: Copy-Paste Functions
+Backend Pydantic models and frontend TypeScript interfaces must stay aligned. Before adding a field to a backend response, search `frontend/src/types/api.ts`, `frontend/src/lib/api.ts`, and route/component consumers.
 
-**Bad**: Copying a validation function to another file
+### Sidecar URLs And Ports
 
-**Good**: Extract to shared utilities, import where needed
+Do not duplicate sidecar URL construction. Use `frontend/src/lib/platform.ts` and `frontend/src/lib/api.ts`.
 
-### Pattern 2: Similar Components
+### Workspace Layout
 
-**Bad**: Creating a new component that's 80% similar to existing
+Do not duplicate workspace directory names outside backend `wiki/paths.py` and `wiki/workspace.py` unless the value is part of a documented cross-layer contract.
 
-**Good**: Extend existing component with props/variants
+### Supported File Types
 
-### Pattern 3: Repeated Constants
+Import suffixes are mirrored in Electron dialog filters and frontend drag/drop filtering. Search before changing:
 
-**Bad**: Defining the same constant in multiple files
+```bash
+rg "pdf|docx|html|htm|md|txt" frontend/src/lib/use-workspace-actions.ts electron/src/main.ts
+```
 
-**Good**: Single source of truth, import everywhere
+### UI Primitives
 
----
+Check `frontend/src/components/ui` before creating a new component primitive. Existing primitives cover buttons, cards, dialogs, inputs, scroll areas, separators, tabs, tooltips, badges, and skeletons.
 
-## When to Abstract
+## When To Abstract
 
-**Abstract when**:
-- Same code appears 3+ times
-- Logic is complex enough to have bugs
-- Multiple people might need this
+Abstract when:
 
-**Don't abstract when**:
-- Only used once
-- Trivial one-liner
-- Abstraction would be more complex than duplication
+- The same behavior appears in three or more places.
+- A protocol or path value must stay synchronized across layers.
+- Tests already need an injection seam for heavy dependencies or platform APIs.
 
----
+Do not abstract when:
 
-## After Batch Modifications
+- The logic is a one-off route/component detail.
+- The abstraction would hide a boundary that should remain explicit, such as backend HTTP mapping or Electron IPC.
 
-When you've made similar changes to multiple files:
+## After Batch Changes
 
-1. **Review**: Did you catch all instances?
-2. **Search**: Run grep to find any missed
-3. **Consider**: Should this be abstracted?
-
----
-
-## Gotcha: Asymmetric Mechanisms Producing Same Output
-
-**Problem**: When two different mechanisms must produce the same file set (e.g., recursive directory copy for init vs. manual `files.set()` for update), structural changes (renaming, moving, adding subdirectories) only propagate through the automatic mechanism. The manual one silently drifts.
-
-**Symptom**: Init works perfectly, but update creates files at wrong paths or misses files entirely.
-
-**Prevention checklist**:
-- [ ] When migrating directory structures, search for ALL code paths that reference the old structure
-- [ ] If one path is auto-derived (glob/copy) and another is manually listed, the manual one needs updating
-- [ ] Add a regression test that compares outputs from both mechanisms
-
----
-
-## Checklist Before Commit
-
-- [ ] Searched for existing similar code
-- [ ] No copy-pasted logic that should be shared
-- [ ] Constants defined in one place
-- [ ] Similar patterns follow same structure
+- Run `rg` for the old name/value.
+- Check the owning spec index for the affected layer.
+- Update cross-layer docs when a duplicated value is intentionally mirrored.
