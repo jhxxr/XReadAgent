@@ -904,3 +904,36 @@ Reproduced v0.0.8 first-launch failure: Defender cold-scan of bundled venv stall
 ### Next Steps
 
 - None - task complete
+
+
+## Session 27: Close out v0.0.8 release
+
+**Date**: 2026-06-12
+**Task**: Close out v0.0.8 release
+**Branch**: `main`
+
+### Summary
+
+Verified v0.0.8 fully shipped: tag v0.0.8 pushed to origin and GitHub Release published with installer asset. Archived task 06-11-release-v0-0-8. Next up: v0.0.9 release (sidecar cold-start fix) — task already created in planning.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f89f44b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
