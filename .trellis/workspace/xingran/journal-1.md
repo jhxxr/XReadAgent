@@ -937,3 +937,36 @@ Verified v0.0.8 fully shipped: tag v0.0.8 pushed to origin and GitHub Release pu
 ### Next Steps
 
 - None - task complete
+
+
+## Session 28: Release v0.0.9
+
+**Date**: 2026-06-12
+**Task**: Release v0.0.9
+**Branch**: `main`
+
+### Summary
+
+Released v0.0.9 carrying the sidecar cold-start fix (8bd9f2c). bump-version.mjs synced all 5 version locations, tagged v0.0.9, pushed main+tag. Release workflow passed the tag==version gate and published XReadAgent-Setup-0.0.9.exe (309MB) to GitHub Releases. CI on main also green-lit. Windows-only as before; macOS build still disabled.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a2f79d6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
