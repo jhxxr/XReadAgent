@@ -1,6 +1,0 @@
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend stack pinning: React 19, Vite 6, TanStack Router/Query, shadcn, Tailwind 4, AGPL SPDX headers"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Radix wrappers, CVA variants, data-slot, lucide icons for copilot sidebar components"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "TanStack Query for server state, no global store — pattern for query mutation in sidebar"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Strict TS, noUncheckedIndexedAccess, types/api.ts as Pydantic mirror"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Context-provider pairs, TanStack Query mutation patterns for query submission"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend quality checklist: ESLint, Prettier, AGPL SPDX, Vitest invariants"}

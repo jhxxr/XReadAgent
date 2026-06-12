@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Verify backend spec index and referenced conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Verify frontend spec index and referenced conventions"}
+{"file": ".trellis/spec/electron/index.md", "reason": "Verify Electron spec index and referenced conventions"}
+{"file": ".trellis/spec/cross-layer/index.md", "reason": "Verify cross-layer contracts and quality checklist"}
+{"file": ".trellis/spec/guides/index.md", "reason": "Verify shared guide consistency and placeholder cleanup"}

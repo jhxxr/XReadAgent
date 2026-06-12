@@ -1,6 +1,0 @@
-{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Backend directory conventions — where xreadagent.mcp module should live"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Backend quality bar — AGPL SPDX, Pydantic strict"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "Error handling — elicit confirmation for expensive MCP tools"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer data flow — MCP server ↔ FastAPI ↔ sidecar"}
-{"file": ".trellis/tasks/05-29-phase-4-sqlite-vec-mcp-macos/research/mcp-protocol.md", "reason": "MCP protocol detailed research — SDK, tools, resources, integration options"}
-{"file": ".trellis/tasks/05-29-mcp-protocol/prd.md", "reason": "Task PRD — all requirements, decisions, acceptance criteria"}

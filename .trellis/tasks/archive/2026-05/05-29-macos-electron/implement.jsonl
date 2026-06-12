@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/electron/index.md", "reason": "Electron architecture, sidecar lifecycle, IPC bridge — macOS changes must be consistent"}
-{"file": ".trellis/tasks/archive/2026-05/05-29-phase-4-sqlite-vec-mcp-macos/research/macos-electron.md", "reason": "macOS research — bundle-python bug, entitlements, notarization, icon format"}
-{"file": ".trellis/tasks/05-29-macos-electron/prd.md", "reason": "Task PRD — all requirements, decisions, acceptance criteria"}

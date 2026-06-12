@@ -1,5 +1,0 @@
-{"file": ".trellis/spec/electron/index.md", "reason": "Release packaging and publish contract for tag-triggered desktop releases."}
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend package metadata/version source conventions and quality rules."}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend package metadata/version consistency context."}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Pre-modification search guidance for repeated version constants."}
-{"file": ".trellis/tasks/06-09-release-new-version/research/release-flow.md", "reason": "Release flow and version synchronization findings for this task."}

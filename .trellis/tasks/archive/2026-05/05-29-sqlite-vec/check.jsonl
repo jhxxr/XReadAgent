@@ -1,5 +1,0 @@
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Verify sqlite-vec code meets backend quality bar"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify embedding failures degrade gracefully"}
-{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Verify vec.sqlite follows database conventions"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify search API contract is consistent"}
-{"file": ".trellis/tasks/05-29-sqlite-vec/prd.md", "reason": "Check implementation against all acceptance criteria"}

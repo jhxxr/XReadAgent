@@ -1,6 +1,0 @@
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify Electron code meets frontend quality bar — lint, typecheck, test coverage"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Verify sidecar lifecycle code meets backend quality bar"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Check SidecarStatusPage and splash screen follow component conventions"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Check Electron preload bridge types and IPC type definitions"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify Electron ↔ sidecar IPC boundary is consistent with project's cross-layer patterns"}
-{"file": ".trellis/tasks/05-28-electron-electron-python-sidecar/prd.md", "reason": "Check implementation against all acceptance criteria and requirements"}

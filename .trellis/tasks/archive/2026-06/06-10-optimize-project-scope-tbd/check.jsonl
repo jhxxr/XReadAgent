@@ -1,6 +1,0 @@
-{"file": ".trellis/tasks/06-10-optimize-project-scope-tbd/research/runtime-performance.md", "reason": "校验 A1-A4 是否达成调研中定位的瓶颈改善（启动不超时、bundle 拆分、PDF 不重载）"}
-{"file": ".trellis/tasks/06-10-optimize-project-scope-tbd/research/ux-ui.md", "reason": "校验 B1-B4 验收点：Tabs 可达、外链走系统浏览器、ingest 有进度、拖拽可导入"}
-{"file": ".trellis/tasks/06-10-optimize-project-scope-tbd/research/build-release.md", "reason": "校验 C1-C4 验收点：uv.lock 锁定、版本单源、CI 缓存、产物瘦身"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端改动质量门槛（ruff/mypy strict/pytest）"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端改动质量门槛（eslint/tsc/vitest）"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层改动（B3、A4）一致性检查"}

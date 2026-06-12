@@ -1,6 +1,0 @@
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify reader code meets frontend quality bar — lint, typecheck, test coverage"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Check PdfViewer and toolbar follow component conventions"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Check TypeScript strict mode compliance in new reader code"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Check zoom/page state management follows project patterns"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify PDF URL construction through platform.ts is consistent"}
-{"file": ".trellis/tasks/05-29-pdf-js/prd.md", "reason": "Check implementation against all acceptance criteria and requirements"}

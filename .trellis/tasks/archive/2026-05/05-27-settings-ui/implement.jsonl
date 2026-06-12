@@ -1,8 +1,0 @@
-{"file": ".trellis/tasks/05-27-settings-ui/prd.md", "reason": "PRD with R1-R3 requirements for settings API, settings page, sidebar integration"}
-{"file": ".trellis/tasks/05-27-settings-ui/research/settings-exploration.md", "reason": "Research findings on current config infrastructure, model resolution, workspace path handling"}
-{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Frontend directory conventions for new route/component files"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component patterns for settings page and sidebar changes"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type safety rules for new API types and settings types"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "State management patterns for settings context"}
-{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Backend directory conventions for new settings module"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Backend quality rules for settings API"}

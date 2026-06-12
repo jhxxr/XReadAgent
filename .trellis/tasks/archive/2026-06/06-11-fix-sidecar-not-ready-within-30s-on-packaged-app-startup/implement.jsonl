@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/electron/index.md", "reason": "Sidecar Lifecycle Contract / buildSidecarEnv 契约与测试约定（mock child_process、不真正起 Python）"}
-{"file": ".trellis/spec/backend/index.md", "reason": "backend 层规范索引（入口/测试约定）"}
-{"file": ".trellis/tasks/06-11-fix-sidecar-not-ready-within-30s-on-packaged-app-startup/prd.md", "reason": "根因分析（Defender 冷扫描 >120s 零输出）与分级超时设计（boot 45s / ready 240s）"}

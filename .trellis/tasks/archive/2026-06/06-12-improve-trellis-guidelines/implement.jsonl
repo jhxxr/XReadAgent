@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend sidecar, workspace, job, and quality conventions refreshed by this task"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend renderer, API client, state, UI, and quality conventions refreshed by this task"}
+{"file": ".trellis/spec/electron/index.md", "reason": "Electron sidecar lifecycle, IPC, security, and quality conventions refreshed by this task"}
+{"file": ".trellis/spec/cross-layer/index.md", "reason": "Cross-layer API, workspace, and sidecar integration contracts refreshed by this task"}
+{"file": ".trellis/spec/guides/index.md", "reason": "Shared thinking guides for code reuse and cross-layer checks"}
