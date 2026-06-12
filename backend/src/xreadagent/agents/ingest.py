@@ -477,6 +477,8 @@ class IngestAgent:
         headers: dict[str, str] | None = None,
         planner_method: PlannerMethod = "auto",
         max_tokens: int | None = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
     ) -> None:
         self._workspace = workspace
         self._system_prompt = system_prompt or INGEST_SYSTEM_PROMPT
@@ -497,6 +499,8 @@ class IngestAgent:
                 headers=self._headers,
                 planner_method=planner_method,
                 max_tokens=self._max_tokens,
+                api_key=api_key,
+                base_url=base_url,
             )
         else:
             raise ValueError(
@@ -623,6 +627,8 @@ def _make_default_planner(
     headers: dict[str, str] | None = None,
     planner_method: PlannerMethod = "auto",
     max_tokens: int | None = None,
+    api_key: str | None = None,
+    base_url: str | None = None,
 ) -> IngestPlanner:
     """Build a planner that uses LangChain's structured-output API.
 
@@ -631,6 +637,12 @@ def _make_default_planner(
     plumbed via ``default_headers`` which is supported by ``ChatAnthropic``
     and ``ChatOpenAI``; for other providers the kwarg is silently dropped if
     the constructor rejects it.
+
+    ``api_key`` / ``base_url`` (when non-empty) are forwarded to
+    ``init_chat_model`` so a UI-configured provider's credentials reach the
+    underlying ``ChatOpenAI`` / ``ChatAnthropic`` without relying on env vars;
+    they are dropped via the same tolerant-kwargs retry if a provider rejects
+    them.
 
     ``max_tokens`` is forwarded to ``init_chat_model`` as an unknown kwarg —
     LangChain passes it through to the underlying provider class
@@ -647,6 +659,10 @@ def _make_default_planner(
     init_kwargs: dict[str, Any] = {"max_tokens": resolved_max_tokens}
     if headers:
         init_kwargs["default_headers"] = dict(headers)
+    if api_key:
+        init_kwargs["api_key"] = api_key
+    if base_url:
+        init_kwargs["base_url"] = base_url
 
     chat = _init_chat_model_with_optional_kwargs(init_chat_model, model, init_kwargs)
 

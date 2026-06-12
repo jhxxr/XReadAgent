@@ -38,6 +38,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.websockets import WebSocketState
 
 from xreadagent.api.ingest_jobs import IngestJobService
+from xreadagent.api.providers_router import providers_router
 from xreadagent.api.settings import (
     AppSettings,
     UpdateSettingsRequest,
@@ -134,6 +135,8 @@ def create_app(
 
     # Include the wiki + ingest/query router.
     app.include_router(wiki_router, prefix="/api")
+    # Provider utility endpoints (fetch model list / test a model).
+    app.include_router(providers_router, prefix="/api")
 
     @app.get("/api/settings", response_model=AppSettings)
     async def get_settings() -> AppSettings:

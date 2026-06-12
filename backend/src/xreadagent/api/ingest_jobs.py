@@ -90,6 +90,8 @@ class IngestJobRequest:
     file_path: Path
     model: str
     title: str | None = None
+    api_key: str | None = None
+    base_url: str | None = None
 
 
 class IngestJobRunner(Protocol):
@@ -120,7 +122,12 @@ async def _default_runner(
     from xreadagent.agents.ingest import IngestAgent
     from xreadagent.agents.orchestrator import ingest_source
 
-    agent = IngestAgent(workspace, model=request.model)
+    agent = IngestAgent(
+        workspace,
+        model=request.model,
+        api_key=request.api_key,
+        base_url=request.base_url,
+    )
     return await ingest_source(
         workspace,
         request.file_path,

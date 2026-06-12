@@ -248,11 +248,57 @@ export interface QueryResultResponse {
 /** Supported renderer UI languages persisted through `/api/settings`. */
 export type AppLanguage = "en" | "zh";
 
+/**
+ * API wire format a provider speaks. `openai` covers every OpenAI-compatible
+ * endpoint; `anthropic` covers the Anthropic Messages API. Mirrors
+ * `ProviderFormat` in `backend/src/xreadagent/api/settings.py`.
+ */
+export type ProviderFormat = "openai" | "anthropic";
+
+/** Features that can each be pointed at a different model. */
+export type FeatureName = "ingest" | "query" | "translate";
+
+/** One model offered by a provider. `id` is sent to the API; `name` is a label. */
+export interface ModelEntry {
+  id: string;
+  name: string;
+}
+
+/**
+ * A configured model provider. Mirrors the Pydantic `Provider` (camelCase)
+ * in `backend/src/xreadagent/api/settings.py`. `id` is a stable slug referenced
+ * by `ModelRef.providerId`. Provider list order is display order.
+ */
+export interface Provider {
+  id: string;
+  name: string;
+  format: ProviderFormat;
+  baseUrl: string;
+  apiKey: string;
+  enabled: boolean;
+  models: ModelEntry[];
+}
+
+/** A pointer to one model of one provider, used for per-feature assignment. */
+export interface ModelRef {
+  providerId: string;
+  modelId: string;
+}
+
+/** Per-feature model assignment; `null` means the feature is unassigned. */
+export interface FeatureModels {
+  ingest: ModelRef | null;
+  query: ModelRef | null;
+  translate: ModelRef | null;
+}
+
 /** Response shape for `GET /api/settings`. */
 export interface AppSettings {
   model: string;
   workspacePath: string;
   language: AppLanguage;
+  providers: Provider[];
+  featureModels: FeatureModels;
 }
 
 /** Body of `PUT /api/settings` — partial update. */
@@ -260,4 +306,35 @@ export interface UpdateSettingsRequest {
   model?: string;
   workspacePath?: string;
   language?: AppLanguage;
+  providers?: Provider[];
+  featureModels?: FeatureModels;
+}
+
+/** Body of `POST /api/providers/models` — fetch a provider's model list. */
+export interface FetchModelsRequest {
+  format: ProviderFormat;
+  baseUrl: string;
+  apiKey?: string;
+  headers?: Record<string, string>;
+}
+
+/** Response shape for `POST /api/providers/models`. */
+export interface FetchModelsResponse {
+  models: ModelEntry[];
+}
+
+/** Body of `POST /api/providers/test` — verify a model is reachable. */
+export interface TestModelRequest {
+  format: ProviderFormat;
+  baseUrl: string;
+  modelId: string;
+  apiKey?: string;
+  headers?: Record<string, string>;
+}
+
+/** Response shape for `POST /api/providers/test`. */
+export interface TestModelResponse {
+  ok: boolean;
+  latencyMs: number | null;
+  error: string | null;
 }

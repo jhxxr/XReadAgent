@@ -1,9 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { LanguagesIcon, SaveIcon, ServerIcon, SettingsIcon, type LucideIcon } from "lucide-react";
+import {
+  BoxesIcon,
+  LanguagesIcon,
+  SaveIcon,
+  ServerIcon,
+  SettingsIcon,
+  type LucideIcon,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { ModelsTab } from "@/components/settings/models-tab";
 import { SidecarTab } from "@/components/settings/sidecar-tab";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +23,7 @@ import { LANGUAGE_OPTIONS, useI18n, type TranslationKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { writeWorkspacePath } from "@/lib/workspace";
 
-type SettingsTabValue = "general" | "language" | "sidecar";
+type SettingsTabValue = "general" | "models" | "language" | "sidecar";
 
 interface SettingsTabItem {
   value: SettingsTabValue;
@@ -30,6 +38,12 @@ const SETTINGS_TABS: readonly SettingsTabItem[] = [
     labelKey: "settings.tabs.general",
     descriptionKey: "settings.tabs.generalDescription",
     icon: SettingsIcon,
+  },
+  {
+    value: "models",
+    labelKey: "settings.tabs.models",
+    descriptionKey: "settings.tabs.modelsDescription",
+    icon: BoxesIcon,
   },
   {
     value: "language",
@@ -84,6 +98,10 @@ export function SettingsRoute() {
           <div className="min-w-0">
             <TabsContent value="general" className="mt-0">
               <GeneralTab />
+            </TabsContent>
+
+            <TabsContent value="models" className="mt-0">
+              <ModelsTab />
             </TabsContent>
 
             <TabsContent value="language" className="mt-0">

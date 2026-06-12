@@ -90,6 +90,8 @@ class QueryAgent:
         headers: dict[str, str] | None = None,
         planner_method: PlannerMethod = "auto",
         max_tokens: int | None = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
     ) -> None:
         self._workspace = workspace
         self._system_prompt = system_prompt or QUERY_SYSTEM_PROMPT
@@ -107,6 +109,8 @@ class QueryAgent:
                 headers=self._headers,
                 planner_method=planner_method,
                 max_tokens=self._max_tokens,
+                api_key=api_key,
+                base_url=base_url,
             )
         else:
             raise ValueError(
@@ -208,13 +212,15 @@ def _make_default_planner(
     headers: dict[str, str] | None = None,
     planner_method: PlannerMethod = "auto",
     max_tokens: int | None = None,
+    api_key: str | None = None,
+    base_url: str | None = None,
 ) -> QueryPlanner:
     """Build a planner that uses LangChain's structured-output API.
 
     Imported lazily so the rest of the package stays importable when the
     LangChain extras are not installed. See ``ingest._make_default_planner``
-    for the headers / planner_method / max_tokens rationale — same
-    proxy-compat + extended-thinking-budget story.
+    for the headers / api_key / base_url / planner_method / max_tokens
+    rationale — same proxy-compat + extended-thinking-budget story.
     """
     from langchain.chat_models import init_chat_model
 
@@ -226,6 +232,10 @@ def _make_default_planner(
     init_kwargs: dict[str, Any] = {"max_tokens": resolved_max_tokens}
     if headers:
         init_kwargs["default_headers"] = dict(headers)
+    if api_key:
+        init_kwargs["api_key"] = api_key
+    if base_url:
+        init_kwargs["base_url"] = base_url
 
     chat = _init_chat_model_with_optional_kwargs(init_chat_model, model, init_kwargs)
 

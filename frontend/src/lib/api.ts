@@ -6,9 +6,13 @@ import type {
   IngestJobResponse,
   PaperSummary,
   ConceptSummary,
+  FetchModelsRequest,
+  FetchModelsResponse,
   QuerySummary,
   QueryRequest,
   QueryResultResponse,
+  TestModelRequest,
+  TestModelResponse,
   TranslateRequest,
   TranslateResponse,
   TranslationsManifest,
@@ -292,6 +296,34 @@ export async function getSettings(): Promise<AppSettings> {
 export async function putSettings(req: UpdateSettingsRequest): Promise<AppSettings> {
   return request<AppSettings>("/settings", {
     method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+/**
+ * Fetch the model list a provider exposes. Sends an unsaved provider draft so
+ * the UI can fetch before persisting; throws {@link ApiError} on failure.
+ */
+export async function fetchProviderModels(
+  req: FetchModelsRequest,
+): Promise<FetchModelsResponse> {
+  return request<FetchModelsResponse>("/providers/models", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+/**
+ * Test that a provider/model is reachable. Returns `{ ok, latencyMs, error }`;
+ * a failed round-trip is reported as `ok: false` (HTTP 200), not an exception.
+ */
+export async function testProviderModel(
+  req: TestModelRequest,
+): Promise<TestModelResponse> {
+  return request<TestModelResponse>("/providers/test", {
+    method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   });

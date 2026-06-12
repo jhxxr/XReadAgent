@@ -19,9 +19,15 @@ import xreadagent.api.settings as settings_mod
 from xreadagent.api.main import create_app
 from xreadagent.api.settings import (
     AppSettings,
+    FeatureModels,
+    ModelEntry,
+    ModelRef,
+    Provider,
     UpdateSettingsRequest,
     load_settings,
     merge_settings,
+    resolve_chat_model,
+    resolve_feature_model,
     save_settings,
 )
 
@@ -36,7 +42,13 @@ def test_app_settings_round_trips() -> None:
     assert s.workspacePath == "/tmp/ws"
     assert s.language == "zh"
     dumped = s.model_dump(mode="json")
-    assert dumped == {"model": "openai:gpt-4o", "workspacePath": "/tmp/ws", "language": "zh"}
+    assert dumped == {
+        "model": "openai:gpt-4o",
+        "workspacePath": "/tmp/ws",
+        "language": "zh",
+        "providers": [],
+        "featureModels": {"ingest": None, "query": None, "translate": None},
+    }
     assert AppSettings.model_validate(dumped) == s
 
 
@@ -445,3 +457,309 @@ def test_put_settings_empty_body_returns_current(
     assert body["model"] == "saved-model"
     assert body["workspacePath"] == "/saved"
     assert body["language"] == "zh"
+
+
+# ---------------------------------------------------------------------------
+# Provider / model schema
+# ---------------------------------------------------------------------------
+
+
+def _sample_provider() -> Provider:
+    return Provider(
+        id="deepseek",
+        name="DeepSeek",
+        format="openai",
+        baseUrl="https://api.deepseek.com/v1",
+        apiKey="sk-test",
+        enabled=True,
+        models=[
+            ModelEntry(id="deepseek-chat", name="DeepSeek Chat"),
+            ModelEntry(id="deepseek-reasoner"),
+        ],
+    )
+
+
+def test_provider_defaults() -> None:
+    p = Provider(id="p1")
+    assert p.name == ""
+    assert p.format == "openai"
+    assert p.baseUrl == ""
+    assert p.apiKey == ""
+    assert p.enabled is True
+    assert p.models == []
+
+
+def test_provider_rejects_invalid_format() -> None:
+    with pytest.raises(ValidationError):
+        Provider(id="p1", format="gemini")  # type: ignore[arg-type]
+
+
+def test_provider_rejects_extra_fields() -> None:
+    with pytest.raises(ValidationError):
+        Provider(id="p1", bogus=True)  # type: ignore[call-arg]
+
+
+def test_app_settings_with_providers_round_trips() -> None:
+    s = AppSettings(
+        model="",
+        workspacePath="/ws",
+        language="en",
+        providers=[_sample_provider()],
+        featureModels=FeatureModels(
+            ingest=ModelRef(providerId="deepseek", modelId="deepseek-chat"),
+            query=ModelRef(providerId="deepseek", modelId="deepseek-reasoner"),
+        ),
+    )
+    dumped = s.model_dump(mode="json")
+    assert AppSettings.model_validate(dumped) == s
+    assert dumped["providers"][0]["apiKey"] == "sk-test"
+    assert dumped["featureModels"]["ingest"] == {
+        "providerId": "deepseek",
+        "modelId": "deepseek-chat",
+    }
+    assert dumped["featureModels"]["translate"] is None
+
+
+def test_load_legacy_two_field_file_gets_empty_providers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pre-provider settings.json must still load with provider defaults."""
+    settings_file = tmp_path / "settings.json"
+    monkeypatch.setattr(settings_mod, "_SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(settings_mod, "_SETTINGS_DIR", tmp_path)
+
+    settings_file.write_text(
+        json.dumps({"model": "openai:gpt-4o", "workspacePath": "/ws"}),
+        encoding="utf-8",
+    )
+
+    result = load_settings()
+    assert result.model == "openai:gpt-4o"
+    assert result.language == "zh"
+    assert result.providers == []
+    assert result.featureModels == FeatureModels()
+
+
+def test_save_load_round_trips_providers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings_file = tmp_path / "settings.json"
+    monkeypatch.setattr(settings_mod, "_SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(settings_mod, "_SETTINGS_DIR", tmp_path)
+
+    original = AppSettings(
+        providers=[_sample_provider()],
+        featureModels=FeatureModels(
+            translate=ModelRef(providerId="deepseek", modelId="deepseek-chat")
+        ),
+    )
+    save_settings(original)
+    assert load_settings() == original
+
+
+# ---------------------------------------------------------------------------
+# merge_settings — providers / featureModels
+# ---------------------------------------------------------------------------
+
+
+def test_merge_replaces_providers_wholesale() -> None:
+    current = AppSettings(providers=[_sample_provider()])
+    update = UpdateSettingsRequest(providers=[Provider(id="other", format="anthropic")])
+    merged = merge_settings(current, update)
+    assert [p.id for p in merged.providers] == ["other"]
+    assert merged.providers[0].format == "anthropic"
+
+
+def test_merge_none_providers_preserves_current() -> None:
+    current = AppSettings(providers=[_sample_provider()])
+    merged = merge_settings(current, UpdateSettingsRequest(language="en"))
+    assert [p.id for p in merged.providers] == ["deepseek"]
+    assert merged.language == "en"
+
+
+def test_merge_replaces_feature_models() -> None:
+    current = AppSettings(
+        featureModels=FeatureModels(ingest=ModelRef(providerId="a", modelId="m"))
+    )
+    update = UpdateSettingsRequest(
+        featureModels=FeatureModels(query=ModelRef(providerId="b", modelId="n"))
+    )
+    merged = merge_settings(current, update)
+    assert merged.featureModels.ingest is None
+    assert merged.featureModels.query == ModelRef(providerId="b", modelId="n")
+
+
+# ---------------------------------------------------------------------------
+# resolve_feature_model
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_feature_model_happy_path() -> None:
+    settings = AppSettings(
+        providers=[_sample_provider()],
+        featureModels=FeatureModels(
+            ingest=ModelRef(providerId="deepseek", modelId="deepseek-chat")
+        ),
+    )
+    resolved = resolve_feature_model(settings, "ingest")
+    assert resolved is not None
+    provider, model = resolved
+    assert provider.id == "deepseek"
+    assert model.id == "deepseek-chat"
+
+
+def test_resolve_feature_model_unassigned_returns_none() -> None:
+    settings = AppSettings(providers=[_sample_provider()])
+    assert resolve_feature_model(settings, "query") is None
+
+
+def test_resolve_feature_model_missing_provider_returns_none() -> None:
+    settings = AppSettings(
+        providers=[_sample_provider()],
+        featureModels=FeatureModels(
+            ingest=ModelRef(providerId="ghost", modelId="deepseek-chat")
+        ),
+    )
+    assert resolve_feature_model(settings, "ingest") is None
+
+
+def test_resolve_feature_model_disabled_provider_returns_none() -> None:
+    provider = _sample_provider()
+    provider.enabled = False
+    settings = AppSettings(
+        providers=[provider],
+        featureModels=FeatureModels(
+            ingest=ModelRef(providerId="deepseek", modelId="deepseek-chat")
+        ),
+    )
+    assert resolve_feature_model(settings, "ingest") is None
+
+
+def test_resolve_feature_model_missing_model_returns_none() -> None:
+    settings = AppSettings(
+        providers=[_sample_provider()],
+        featureModels=FeatureModels(
+            ingest=ModelRef(providerId="deepseek", modelId="vanished")
+        ),
+    )
+    assert resolve_feature_model(settings, "ingest") is None
+
+
+# ---------------------------------------------------------------------------
+# resolve_chat_model (model string + credentials)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_chat_model_override_wins_without_credentials() -> None:
+    settings = AppSettings(
+        providers=[_sample_provider()],
+        featureModels=FeatureModels(
+            ingest=ModelRef(providerId="deepseek", modelId="deepseek-chat")
+        ),
+    )
+    resolved = resolve_chat_model(settings, "ingest", override="openai:gpt-4o")
+    assert resolved is not None
+    assert resolved.model == "openai:gpt-4o"
+    assert resolved.apiKey == ""
+    assert resolved.baseUrl == ""
+
+
+def test_resolve_chat_model_from_openai_provider() -> None:
+    settings = AppSettings(
+        providers=[_sample_provider()],
+        featureModels=FeatureModels(
+            ingest=ModelRef(providerId="deepseek", modelId="deepseek-chat")
+        ),
+    )
+    resolved = resolve_chat_model(settings, "ingest")
+    assert resolved is not None
+    assert resolved.model == "openai:deepseek-chat"
+    assert resolved.apiKey == "sk-test"
+    assert resolved.baseUrl == "https://api.deepseek.com/v1"
+
+
+def test_resolve_chat_model_anthropic_prefix() -> None:
+    provider = Provider(
+        id="cch",
+        format="anthropic",
+        baseUrl="https://cch.x.de/v1",
+        apiKey="k",
+        models=[ModelEntry(id="claude-x")],
+    )
+    settings = AppSettings(
+        providers=[provider],
+        featureModels=FeatureModels(
+            query=ModelRef(providerId="cch", modelId="claude-x")
+        ),
+    )
+    resolved = resolve_chat_model(settings, "query")
+    assert resolved is not None
+    assert resolved.model == "anthropic:claude-x"
+    assert resolved.baseUrl == "https://cch.x.de/v1"
+
+
+def test_resolve_chat_model_legacy_model_string() -> None:
+    settings = AppSettings(model="openai:gpt-4o")
+    resolved = resolve_chat_model(settings, "ingest")
+    assert resolved is not None
+    assert resolved.model == "openai:gpt-4o"
+    assert resolved.apiKey == ""
+
+
+def test_resolve_chat_model_nothing_configured_returns_none() -> None:
+    assert resolve_chat_model(AppSettings(), "translate") is None
+
+
+# ---------------------------------------------------------------------------
+# HTTP round-trip for providers + featureModels
+# ---------------------------------------------------------------------------
+
+
+def test_put_get_settings_round_trips_providers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings_file = tmp_path / "settings.json"
+    monkeypatch.setattr(settings_mod, "_SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(settings_mod, "_SETTINGS_DIR", tmp_path)
+
+    client = TestClient(create_app())
+    payload = {
+        "providers": [
+            {
+                "id": "deepseek",
+                "name": "DeepSeek",
+                "format": "openai",
+                "baseUrl": "https://api.deepseek.com/v1",
+                "apiKey": "sk-test",
+                "enabled": True,
+                "models": [{"id": "deepseek-chat", "name": "DeepSeek Chat"}],
+            }
+        ],
+        "featureModels": {
+            "ingest": {"providerId": "deepseek", "modelId": "deepseek-chat"},
+            "query": None,
+            "translate": None,
+        },
+    }
+    put = client.put("/api/settings", json=payload)
+    assert put.status_code == 200
+
+    body = client.get("/api/settings").json()
+    assert body["providers"][0]["id"] == "deepseek"
+    assert body["providers"][0]["apiKey"] == "sk-test"
+    assert body["featureModels"]["ingest"]["modelId"] == "deepseek-chat"
+
+
+def test_put_settings_rejects_invalid_provider_format(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings_file = tmp_path / "settings.json"
+    monkeypatch.setattr(settings_mod, "_SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(settings_mod, "_SETTINGS_DIR", tmp_path)
+
+    client = TestClient(create_app())
+    response = client.put(
+        "/api/settings",
+        json={"providers": [{"id": "p1", "format": "gemini"}]},
+    )
+    assert response.status_code == 422

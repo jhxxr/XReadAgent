@@ -13,7 +13,6 @@ query orchestrator synchronously.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +20,12 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from xreadagent.api.ingest_jobs import IngestJobRequest, IngestJobService
+from xreadagent.api.settings import (
+    FeatureName,
+    ResolvedChatModel,
+    load_settings,
+    resolve_chat_model,
+)
 from xreadagent.wiki.frontmatter_utils import (
     list_concepts,
     list_papers,
@@ -124,26 +129,26 @@ def _open_workspace(workspace_path: str) -> Workspace:
     return Workspace.at(candidate)
 
 
-def _resolve_model(model_override: str | None) -> str:
-    """Return the model string from the request body, settings, or the environment."""
-    if model_override and model_override.strip():
-        return model_override.strip()
-    # Check persisted settings next.
-    from xreadagent.api.settings import load_settings
+def _resolve_chat(
+    feature: FeatureName, model_override: str | None
+) -> ResolvedChatModel:
+    """Resolve a feature's chat target (model + credentials) from settings.
 
-    settings_model: str = load_settings().model.strip()
-    if settings_model:
-        return settings_model
-    env_model = os.environ.get("XREAD_AGENT_MODEL", "").strip()
-    if env_model:
-        return env_model
-    raise HTTPException(
-        status_code=422,
-        detail=(
-            "No model specified. Pass `model` in the request body, configure "
-            "it in settings, or set the XREAD_AGENT_MODEL environment variable."
-        ),
-    )
+    Precedence is request-body override → feature-assigned provider → legacy
+    ``model`` string (see :func:`resolve_chat_model`). There is no env-var
+    fallback on the API path — credentials come from the UI provider config.
+    """
+    settings = load_settings()
+    resolved = resolve_chat_model(settings, feature, override=model_override)
+    if resolved is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"No model configured for {feature}. Pass `model` in the request "
+                "body or configure a provider for it in Settings."
+            ),
+        )
+    return resolved
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +292,7 @@ async def post_ingest(req: IngestRequest, request: Request) -> IngestJobResponse
     if not raw_path.exists():
         raise HTTPException(status_code=422, detail=f"file not found: {req.filePath}")
 
-    model = _resolve_model(req.model)
+    resolved = _resolve_chat("ingest", req.model)
     service: IngestJobService | None = getattr(request.app.state, "ingest_service", None)
     if service is None:
         raise HTTPException(
@@ -297,8 +302,10 @@ async def post_ingest(req: IngestRequest, request: Request) -> IngestJobResponse
     job_request = IngestJobRequest(
         workspace_path=workspace.root,
         file_path=raw_path,
-        model=model,
+        model=resolved.model,
         title=req.title,
+        api_key=resolved.apiKey or None,
+        base_url=resolved.baseUrl or None,
     )
     try:
         job_id = service.start_ingest(job_request)
@@ -328,8 +335,13 @@ async def post_query(req: QueryRequest) -> QueryResultResponse:
     from xreadagent.agents.query_orchestrator import answer_query
 
     workspace = _open_workspace(req.workspacePath)
-    model = _resolve_model(req.model)
-    agent = QueryAgent(workspace, model=model)
+    resolved = _resolve_chat("query", req.model)
+    agent = QueryAgent(
+        workspace,
+        model=resolved.model,
+        api_key=resolved.apiKey or None,
+        base_url=resolved.baseUrl or None,
+    )
     try:
         result = await answer_query(workspace, req.question, agent=agent, topic=req.topic)
     except ValueError as exc:
