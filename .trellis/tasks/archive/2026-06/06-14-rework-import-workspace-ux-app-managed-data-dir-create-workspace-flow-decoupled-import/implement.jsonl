@@ -1,0 +1,10 @@
+{"file": ".trellis/spec/backend/workspace-storage.md", "reason": "Canonical workspace layout + create rules; new create-workspace endpoint and convert-only register mode must follow operation-isolation/idempotency/path rules"}
+{"file": ".trellis/spec/cross-layer/workspace-and-files.md", "reason": "Backend owns layout; FE/Electron pass roots+relative paths. Governs registry, per-document actions, and write-boundary isolation (translate vs wiki)"}
+{"file": ".trellis/spec/electron/ipc-and-security.md", "reason": "New preload IPC for workspace list/create/rename/delete/reveal + userData path resolution must follow IPC security conventions"}
+{"file": ".trellis/spec/cross-layer/sidecar-integration.md", "reason": "Create-workspace + register/build/translate jobs cross the Electron-sidecar boundary; follow the integration contract"}
+{"file": ".trellis/spec/cross-layer/api-and-events.md", "reason": "New sources-list endpoint + register job + /ws/jobs event contract must match existing API/event conventions"}
+{"file": ".trellis/spec/frontend/state-and-api.md", "reason": "Workspace state moves from single path to registry-backed; new queries (sources list) and job wiring follow FE state/api patterns"}
+{"file": ".trellis/spec/frontend/architecture.md", "reason": "New-workspace dialog, switcher, and Documents list are added to the existing route/component structure"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Where the new create-workspace endpoint + convert-only ingest mode should live in the backend package"}
+{"file": "research/convert-only-vs-build-wiki.md", "reason": "Register = convert_source only; Build Wiki = agent.ingest on registered source — exact entry points for the decoupled import"}
+{"file": "research/document-list-and-status.md", "reason": "Document list must move from wiki/papers/* to SourcesIndex with derived status; per-document action buttons live on the source row"}

@@ -1,0 +1,10 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Backend changes (create endpoint, convert-only mode, sources-list endpoint) must meet backend quality bar"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Create-workspace failures, convert errors, and job errors must follow error-handling conventions"}
+{"file": ".trellis/spec/electron/quality-guidelines.md", "reason": "New Electron main/preload code (data-dir resolution, registry, IPC) must meet electron quality bar"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "New FE components (workspace switcher, new-workspace dialog, Documents list with actions) must meet FE quality bar"}
+{"file": ".trellis/spec/frontend/ui-guidelines.md", "reason": "Workspace management UI + per-document action buttons/status badges must follow UI guidelines"}
+{"file": ".trellis/spec/cross-layer/workspace-and-files.md", "reason": "Verify write-boundary isolation (translate vs wiki), relative-path convention, no FE path-construction regressions; two-place import-suffix sync preserved"}
+{"file": ".trellis/spec/backend/workspace-storage.md", "reason": "Verify atomic writes, idempotency keys for register mode, and that read-only endpoints still don't auto-create workspaces"}
+{"file": ".trellis/spec/electron/ipc-and-security.md", "reason": "Verify new IPC channels are validated and the removed open-folder dialog leaves no insecure surface"}
+{"file": "research/document-list-and-status.md", "reason": "Verify registered-but-unbuilt docs are listed and status (registered/wikiBuilt/translated) is correct"}
+{"file": "research/convert-only-vs-build-wiki.md", "reason": "Verify import spends zero LLM tokens (register-only) and Build Wiki still works on registered sources"}
