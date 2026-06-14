@@ -39,3 +39,36 @@ Added provider-centric model configuration: backend AppSettings providers[]/feat
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: Rework import/workspace UX: app data dir, create flow, decoupled import
+
+**Date**: 2026-06-14
+**Task**: Rework import/workspace UX: app data dir, create flow, decoupled import
+**Branch**: `main`
+
+### Summary
+
+App-managed workspaces under userData/workspaces/<slug> + workspaces.json registry (Electron IPC) + backend POST /api/workspaces/create; removed arbitrary-folder model. New in-app workspace manager (switcher/new/rename/delete/reveal). Import decoupled into convert-only register (POST /api/sources/register, no LLM); Build Wiki + Translate are per-document actions in a new Documents tab backed by GET /api/sources (status) + POST /api/sources/{slug}/build. Tests across backend/electron/frontend; specs updated.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4d29242` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
