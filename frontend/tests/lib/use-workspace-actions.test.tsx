@@ -69,6 +69,13 @@ function renderTwoActionInstances() {
   return renderHook(() => ({ a: useWorkspaceActions(), b: useWorkspaceActions() }), { wrapper });
 }
 
+async function triggerDrop(importDroppedFiles: (files: readonly File[]) => void, files: readonly File[]) {
+  await act(async () => {
+    importDroppedFiles(files);
+    await Promise.resolve();
+  });
+}
+
 describe("useWorkspaceActions.importDroppedFiles", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -87,9 +94,7 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
     const { result } = renderActions();
     const file = makeFile("paper.pdf");
 
-    await act(async () => {
-      await result.current.importDroppedFiles([file]);
-    });
+    await triggerDrop(result.current.importDroppedFiles, [file]);
 
     expect(getPathForFile).toHaveBeenCalledWith(file);
     await waitFor(() => {
@@ -113,9 +118,7 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
     );
     const { result } = renderActions();
 
-    await act(async () => {
-      await result.current.importDroppedFiles([makeFile("paper.pdf")]);
-    });
+    await triggerDrop(result.current.importDroppedFiles, [makeFile("paper.pdf")]);
 
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith(
@@ -137,9 +140,7 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
     runIngestJob.mockRejectedValue(new Error("MarkItDown blew up"));
     const { result } = renderActions();
 
-    await act(async () => {
-      await result.current.importDroppedFiles([makeFile("paper.pdf")]);
-    });
+    await triggerDrop(result.current.importDroppedFiles, [makeFile("paper.pdf")]);
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith(
@@ -152,9 +153,7 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
   it("rejects unsupported file types with a toast and no ingest call", async () => {
     const { result } = renderActions();
 
-    await act(async () => {
-      await result.current.importDroppedFiles([makeFile("malware.exe")]);
-    });
+    await triggerDrop(result.current.importDroppedFiles, [makeFile("malware.exe")]);
 
     expect(toast.error).toHaveBeenCalledWith("Unsupported file type", expect.anything());
     expect(runIngestJob).not.toHaveBeenCalled();
@@ -165,9 +164,7 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
     const first = makeFile("first.pdf");
     const second = makeFile("second.docx");
 
-    await act(async () => {
-      await result.current.importDroppedFiles([first, second]);
-    });
+    await triggerDrop(result.current.importDroppedFiles, [first, second]);
 
     expect(getPathForFile).toHaveBeenCalledTimes(1);
     expect(getPathForFile).toHaveBeenCalledWith(first);
@@ -182,9 +179,7 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
     const unsupported = makeFile("notes.exe");
     const supported = makeFile("paper.pdf");
 
-    await act(async () => {
-      await result.current.importDroppedFiles([unsupported, supported]);
-    });
+    await triggerDrop(result.current.importDroppedFiles, [unsupported, supported]);
 
     expect(getPathForFile).toHaveBeenCalledWith(supported);
   });
@@ -193,9 +188,7 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
     removeElectronApi();
     const { result } = renderActions();
 
-    await act(async () => {
-      await result.current.importDroppedFiles([makeFile("paper.pdf")]);
-    });
+    await triggerDrop(result.current.importDroppedFiles, [makeFile("paper.pdf")]);
 
     expect(toast.error).toHaveBeenCalledWith("Import is only available in the desktop app");
     expect(runIngestJob).not.toHaveBeenCalled();
@@ -205,9 +198,7 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
     getPathForFile.mockReturnValue("");
     const { result } = renderActions();
 
-    await act(async () => {
-      await result.current.importDroppedFiles([makeFile("paper.pdf")]);
-    });
+    await triggerDrop(result.current.importDroppedFiles, [makeFile("paper.pdf")]);
 
     expect(toast.error).toHaveBeenCalledWith("Import failed", expect.anything());
     expect(runIngestJob).not.toHaveBeenCalled();
@@ -217,16 +208,12 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
     runIngestJob.mockReturnValue(new Promise(() => undefined));
     const { result } = renderActions();
 
-    await act(async () => {
-      await result.current.importDroppedFiles([makeFile("first.pdf")]);
-    });
+    await triggerDrop(result.current.importDroppedFiles, [makeFile("first.pdf")]);
     await waitFor(() => {
       expect(result.current.isImporting).toBe(true);
     });
 
-    await act(async () => {
-      await result.current.importDroppedFiles([makeFile("second.pdf")]);
-    });
+    await triggerDrop(result.current.importDroppedFiles, [makeFile("second.pdf")]);
 
     expect(toast.error).toHaveBeenCalledWith("Import already in progress", expect.anything());
     expect(runIngestJob).toHaveBeenCalledTimes(1);
@@ -236,17 +223,13 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
     runIngestJob.mockReturnValue(new Promise(() => undefined));
     const { result } = renderTwoActionInstances();
 
-    await act(async () => {
-      await result.current.a.importDroppedFiles([makeFile("first.pdf")]);
-    });
+    await triggerDrop(result.current.a.importDroppedFiles, [makeFile("first.pdf")]);
     // Both instances must report the shared in-flight import.
     await waitFor(() => {
       expect(result.current.b.isImporting).toBe(true);
     });
 
-    await act(async () => {
-      await result.current.b.importDroppedFiles([makeFile("second.pdf")]);
-    });
+    await triggerDrop(result.current.b.importDroppedFiles, [makeFile("second.pdf")]);
 
     expect(toast.error).toHaveBeenCalledWith("Import already in progress", expect.anything());
     expect(runIngestJob).toHaveBeenCalledTimes(1);
@@ -255,9 +238,7 @@ describe("useWorkspaceActions.importDroppedFiles", () => {
   it("does nothing when the drop contains no files", async () => {
     const { result } = renderActions();
 
-    await act(async () => {
-      await result.current.importDroppedFiles([]);
-    });
+    await triggerDrop(result.current.importDroppedFiles, []);
 
     expect(runIngestJob).not.toHaveBeenCalled();
     expect(toast.error).not.toHaveBeenCalled();
