@@ -72,3 +72,37 @@ App-managed workspaces under userData/workspaces/<slug> + workspaces.json regist
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: Release v0.0.11
+
+**Date**: 2026-06-14
+**Task**: Release v0.0.11
+**Branch**: `main`
+
+### Summary
+
+Bumped XReadAgent to v0.0.11, pushed the release tag, fixed the frontend drop import test lint failure, and verified the v0.0.11 release plus follow-up CI succeeded.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `660d75a` | (see git log) |
+| `1313ff4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
