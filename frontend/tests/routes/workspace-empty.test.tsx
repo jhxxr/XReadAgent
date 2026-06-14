@@ -16,10 +16,11 @@ import { ThemeProvider } from "@/lib/theme";
 import { writeWorkspacePath } from "@/lib/workspace";
 import { WorkspaceRoute } from "@/routes/workspace";
 
-const { getConcepts, getPapers, getQueries, runIngestJob } = vi.hoisted(() => ({
+const { getConcepts, getPapers, getQueries, getSources, runIngestJob } = vi.hoisted(() => ({
   getConcepts: vi.fn(),
   getPapers: vi.fn(),
   getQueries: vi.fn(),
+  getSources: vi.fn(),
   runIngestJob: vi.fn(),
 }));
 
@@ -27,6 +28,10 @@ vi.mock("@/lib/api", () => ({
   getConcepts,
   getPapers,
   getQueries,
+  getSources,
+  createWorkspace: vi.fn(() =>
+    Promise.resolve({ workspacePath: "/data/ws", title: "WS", created: true }),
+  ),
 }));
 
 vi.mock("@/lib/ingest-job", () => ({ runIngestJob }));
@@ -49,7 +54,6 @@ function installMockElectronAPI(): NonNullable<Window["electronAPI"]> {
     onSplashStatus: vi.fn(),
     onSplashError: vi.fn(),
     sendSplashRetry: vi.fn(),
-    showOpenFolderDialog: vi.fn().mockResolvedValue(["/tmp/ws"]),
     showOpenFileDialog: vi.fn().mockResolvedValue(["/tmp/paper.pdf"]),
     getPathForFile: vi.fn(() => "/tmp/paper.pdf"),
     showNotification: vi.fn(),
@@ -67,6 +71,12 @@ function installMockElectronAPI(): NonNullable<Window["electronAPI"]> {
     onDeepLink: vi.fn(),
     onOpenWorkspace: vi.fn(),
     onMenuNavigate: vi.fn(),
+    listWorkspaces: vi.fn(() => Promise.resolve([])),
+    createWorkspace: vi.fn(),
+    renameWorkspace: vi.fn(),
+    deleteWorkspace: vi.fn(() => Promise.resolve()),
+    touchWorkspace: vi.fn(() => Promise.resolve()),
+    revealWorkspace: vi.fn(() => Promise.resolve()),
   };
   Object.defineProperty(window, "electronAPI", {
     configurable: true,
@@ -114,6 +124,7 @@ describe("Workspace empty state", () => {
     getPapers.mockResolvedValue([]);
     getConcepts.mockResolvedValue([]);
     getQueries.mockResolvedValue([]);
+    getSources.mockResolvedValue([]);
     runIngestJob.mockResolvedValue({
       type: "finish",
       slug: "paper",
@@ -128,20 +139,20 @@ describe("Workspace empty state", () => {
   it("renders the empty-state heading and import button", async () => {
     renderWorkspace();
     expect(await screen.findByRole("heading", { name: /your wiki is empty/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /open workspace/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /new workspace/i })).toBeEnabled();
     expect(screen.getByRole("button", { name: /import paper/i })).toBeInTheDocument();
     expect(screen.getByText(/what is an llm wiki/i)).toBeInTheDocument();
   });
 
-  it("opens the native workspace picker from the empty state", async () => {
-    const api = installMockElectronAPI();
+  it("opens the workspace manager from the empty state", async () => {
+    installMockElectronAPI();
     const user = userEvent.setup();
     renderWorkspace();
 
-    await user.click(await screen.findByRole("button", { name: /open workspace/i }));
+    await user.click(await screen.findByRole("button", { name: /new workspace/i }));
 
-    expect(api.showOpenFolderDialog).toHaveBeenCalledWith("Open Workspace");
-    expect(window.localStorage.getItem("xreadagent.workspacePath")).toBe("/tmp/ws");
+    // The managed workspace manager dialog opens (no native folder picker).
+    expect(await screen.findByPlaceholderText(/new workspace name/i)).toBeInTheDocument();
   });
 
   it("imports a selected document when a workspace is active", async () => {
@@ -150,7 +161,9 @@ describe("Workspace empty state", () => {
     writeWorkspacePath("/tmp/ws");
     renderWorkspace();
 
-    await user.click(await screen.findByRole("button", { name: /import paper/i }));
+    // With an active workspace the Documents tab is shown; the header "Import"
+    // button drives the same convert-only register flow.
+    await user.click(await screen.findByRole("button", { name: "Import" }));
 
     expect(api.showOpenFileDialog).toHaveBeenCalledWith("Import Paper");
     expect(runIngestJob).toHaveBeenCalledWith(
@@ -162,21 +175,15 @@ describe("Workspace empty state", () => {
     );
   });
 
-  it("chooses a workspace first when importing without an active workspace", async () => {
+  it("refuses to import without an active workspace", async () => {
     const api = installMockElectronAPI();
     const user = userEvent.setup();
     renderWorkspace();
 
     await user.click(await screen.findByRole("button", { name: /import paper/i }));
 
-    expect(api.showOpenFolderDialog).toHaveBeenCalledWith("Open Workspace");
-    expect(api.showOpenFileDialog).toHaveBeenCalledWith("Import Paper");
-    expect(runIngestJob).toHaveBeenCalledWith(
-      {
-        workspacePath: "/tmp/ws",
-        filePath: "/tmp/paper.pdf",
-      },
-      expect.anything(),
-    );
+    // No active workspace → no file dialog, no ingest; user is told to pick one.
+    expect(api.showOpenFileDialog).not.toHaveBeenCalled();
+    expect(runIngestJob).not.toHaveBeenCalled();
   });
 });

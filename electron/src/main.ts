@@ -22,6 +22,14 @@ import { buildApplicationMenu } from "./menu";
 import { SidecarManager, resolveSidecarPaths } from "./sidecar";
 import { SPLASH_HTML } from "./splash";
 import { isRendererUrl, resolveRendererUrl } from "./startup";
+import {
+  createWorkspace,
+  deleteWorkspace,
+  listWorkspaces,
+  renameWorkspace,
+  revealWorkspace,
+  touchWorkspace,
+} from "./workspaces";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -427,7 +435,6 @@ function createTray(): void {
   const contextMenu = Menu.buildFromTemplate([
     { label: "Show XReadAgent", click: () => showMainWindow() },
     { type: "separator" },
-    { label: "Open Workspace", click: () => handleTrayOpenWorkspace() },
     { label: "Preferences", click: () => handleTrayPreferences() },
     { type: "separator" },
     { label: "Restart Sidecar", click: () => restartSidecar() },
@@ -562,25 +569,6 @@ async function restartSidecar(): Promise<void> {
 // Tray menu action handlers
 // ---------------------------------------------------------------------------
 
-function handleTrayOpenWorkspace(): void {
-  showMainWindow();
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    dialog
-      .showOpenDialog(mainWindow, {
-        title: "Open Workspace",
-        properties: ["openDirectory"],
-      })
-      .then((result) => {
-        if (result.canceled || result.filePaths.length === 0) return;
-        const workspacePath = result.filePaths[0]!;
-        mainWindow?.webContents.send("open-workspace", workspacePath);
-      })
-      .catch(() => {
-        // User cancelled or dialog error — silently ignore.
-      });
-  }
-}
-
 function handleTrayPreferences(): void {
   showMainWindow();
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -611,14 +599,6 @@ ipcMain.on("show-notification", (_event, title: string, body: string) => {
   }
 });
 
-ipcMain.handle("show-open-folder-dialog", async (_event, title?: string) => {
-  const result = await dialog.showOpenDialog({
-    title: title ?? "Select Folder",
-    properties: ["openDirectory"],
-  });
-  return result.filePaths;
-});
-
 ipcMain.handle("show-open-file-dialog", async (_event, title?: string) => {
   const result = await dialog.showOpenDialog({
     title: title ?? "Select Document",
@@ -630,6 +610,29 @@ ipcMain.handle("show-open-file-dialog", async (_event, title?: string) => {
   });
   return result.filePaths;
 });
+
+// ---------------------------------------------------------------------------
+// Managed workspace registry IPC handlers
+// ---------------------------------------------------------------------------
+
+ipcMain.handle("workspace:list", () => listWorkspaces());
+
+ipcMain.handle("workspace:create", (_event, name: string) =>
+  createWorkspace(name, new Date().toISOString()),
+);
+
+ipcMain.handle("workspace:rename", (_event, id: string, name: string) =>
+  renameWorkspace(id, name),
+);
+
+ipcMain.handle("workspace:delete", (_event, id: string) => deleteWorkspace(id));
+
+ipcMain.handle("workspace:touch", (_event, id: string) =>
+  touchWorkspace(id, new Date().toISOString()),
+);
+
+ipcMain.handle("workspace:reveal", (_event, id: string) => revealWorkspace(id));
+
 
 // ---------------------------------------------------------------------------
 // Sidecar management IPC handlers

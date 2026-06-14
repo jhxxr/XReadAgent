@@ -33,6 +33,15 @@ export type DeepLinkAction =
   | { type: "navigate"; path: string }
   | { type: "open-workspace"; path: string };
 
+/** One registered workspace from the managed registry. */
+export interface WorkspaceEntry {
+  id: string;
+  name: string;
+  path: string;
+  createdAt: string;
+  lastOpenedAt: string;
+}
+
 /** The full Electron bridge API surface exposed via contextBridge. */
 export interface ElectronAPI {
   /** The current platform: "win32" | "darwin" | "linux". */
@@ -51,8 +60,6 @@ export interface ElectronAPI {
   onSplashError: (callback: (message: string) => void) => void;
   /** Send a retry request from the splash screen. */
   sendSplashRetry: () => void;
-  /** Show an open-folder dialog and return the selected path(s). */
-  showOpenFolderDialog: (title?: string) => Promise<string[]>;
   /** Show an open-file dialog and return the selected path(s). */
   showOpenFileDialog: (title?: string) => Promise<string[]>;
   /**
@@ -79,6 +86,18 @@ export interface ElectronAPI {
   onOpenWorkspace: (callback: (workspacePath: string) => void) => void;
   /** Register a callback for menu-driven navigation. */
   onMenuNavigate: (callback: (path: string) => void) => void;
+  /** List registered workspaces (most-recently-opened first). */
+  listWorkspaces: () => Promise<WorkspaceEntry[]>;
+  /** Allocate + register a new managed workspace directory; returns its entry. */
+  createWorkspace: (name: string) => Promise<WorkspaceEntry>;
+  /** Rename a workspace's display name (directory is not moved). */
+  renameWorkspace: (id: string, name: string) => Promise<WorkspaceEntry>;
+  /** Delete a workspace from the registry and remove its directory. */
+  deleteWorkspace: (id: string) => Promise<void>;
+  /** Bump a workspace's last-opened timestamp (switcher ordering). */
+  touchWorkspace: (id: string) => Promise<void>;
+  /** Open a workspace directory in the OS file manager. */
+  revealWorkspace: (id: string) => Promise<void>;
 }
 
 declare global {

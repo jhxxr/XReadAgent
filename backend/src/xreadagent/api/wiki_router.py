@@ -26,6 +26,7 @@ from xreadagent.api.settings import (
     load_settings,
     resolve_chat_model,
 )
+from xreadagent.translation.manifest import TranslationsIndex
 from xreadagent.wiki.frontmatter_utils import (
     list_concepts,
     list_papers,
@@ -82,6 +83,43 @@ class IngestRequest(_Strict):
     filePath: str
     title: str | None = None
     model: str | None = None
+
+
+class RegisterRequest(_Strict):
+    """Body of ``POST /api/sources/register`` — convert-only import, no model."""
+
+    workspacePath: str
+    filePath: str
+    title: str | None = None
+
+
+class BuildWikiRequest(_Strict):
+    """Body of ``POST /api/sources/{slug}/build`` — synthesize the wiki page.
+
+    The archived source file is resolved from the manifest, so the caller does
+    not need (and must not construct) a filesystem path.
+    """
+
+    workspacePath: str
+    model: str | None = None
+
+
+class SourceSummaryResponse(_Strict):
+    """One registered document with derived per-document status.
+
+    ``wikiBuilt`` is true once ``wiki/papers/{slug}.md`` exists; ``translated``
+    is true once any translation entry shares this source's content hash.
+    """
+
+    slug: str
+    title: str
+    kind: str = ""
+    sourcePath: str | None = None
+    ingestedAt: str = ""
+    pageCount: int | None = None
+    wikiBuilt: bool = False
+    translated: bool = False
+
 
 
 class IngestJobResponse(_Strict):
@@ -273,6 +311,128 @@ async def get_overview(
     if not path.exists():
         raise HTTPException(status_code=404, detail="overview.md not found")
     return {"content": read_page_content(path)}
+
+
+# -- Sources (registered documents) ---------------------------------------
+
+
+@wiki_router.get("/sources", response_model=list[SourceSummaryResponse])
+async def get_sources(
+    workspacePath: str = Query(..., description="Absolute path to a workspace directory."),
+) -> list[SourceSummaryResponse]:
+    """List every registered document with its per-document status.
+
+    Sourced from ``state/sources.json`` (NOT ``wiki/papers/``) so documents
+    that were imported but not yet turned into a wiki page are still listed.
+    """
+    workspace = _open_workspace(workspacePath)
+    sources = SourcesIndex.load(workspace).all()
+    translated_hashes = {
+        entry.sourceHash for entry in TranslationsIndex.load(workspace).all()
+    }
+    summaries: list[SourceSummaryResponse] = []
+    for source in sources:
+        paper_path = workspace.papers_dir / f"{source.slug}.md"
+        summaries.append(
+            SourceSummaryResponse(
+                slug=source.slug,
+                title=source.title,
+                kind=source.kind,
+                sourcePath=source.sourcePath or None,
+                ingestedAt=source.ingestedAt,
+                pageCount=source.pageCount,
+                wikiBuilt=paper_path.exists(),
+                translated=source.contentHash in translated_hashes,
+            )
+        )
+    return summaries
+
+
+@wiki_router.post("/sources/register", response_model=IngestJobResponse)
+async def post_register(req: RegisterRequest, request: Request) -> IngestJobResponse:
+    """Register (convert-only) a document without building its wiki page.
+
+    Same job contract as ``POST /api/ingest`` (``jobId`` + ``/ws/jobs/{id}``)
+    but runs only the ``converting`` stage — no LLM call, so no model is
+    required. Building the wiki later is a separate ``POST /api/ingest``.
+    """
+    workspace = _open_workspace(req.workspacePath)
+    raw_path = Path(req.filePath)
+    if not raw_path.exists():
+        raise HTTPException(status_code=422, detail=f"file not found: {req.filePath}")
+
+    service: IngestJobService | None = getattr(request.app.state, "ingest_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=503,
+            detail="ingest service not configured on this sidecar instance",
+        )
+    job_request = IngestJobRequest(
+        workspace_path=workspace.root,
+        file_path=raw_path,
+        model="",
+        mode="register",
+        title=req.title,
+    )
+    try:
+        job_id = service.start_ingest(job_request)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    by_job: dict[str, IngestJobService] = request.app.state.ingest_services_by_job
+    by_job[job_id] = service
+    return IngestJobResponse(jobId=job_id)
+
+
+@wiki_router.post("/sources/{slug}/build", response_model=IngestJobResponse)
+async def post_build_wiki(
+    slug: str, req: BuildWikiRequest, request: Request
+) -> IngestJobResponse:
+    """Build the wiki page for an already-registered document.
+
+    Resolves the archived source file from ``state/sources.json`` (so the
+    renderer never constructs a path) and runs a full ``wiki``-mode ingest.
+    The convert step short-circuits on the cached content hash, so only the
+    LLM analyze/write phases actually run.
+    """
+    workspace = _open_workspace(req.workspacePath)
+    source = SourcesIndex.load(workspace).find_by_id(slug)
+    if source is None:
+        raise HTTPException(status_code=404, detail=f"source not found: {slug}")
+    if not source.sourcePath:
+        raise HTTPException(status_code=422, detail=f"source has no archived file: {slug}")
+    raw_path = workspace.root / source.sourcePath
+    if not raw_path.exists():
+        raise HTTPException(
+            status_code=422, detail=f"archived source file missing: {source.sourcePath}"
+        )
+
+    resolved = _resolve_chat("ingest", req.model)
+    service: IngestJobService | None = getattr(request.app.state, "ingest_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=503,
+            detail="ingest service not configured on this sidecar instance",
+        )
+    job_request = IngestJobRequest(
+        workspace_path=workspace.root,
+        file_path=raw_path,
+        model=resolved.model,
+        mode="wiki",
+        title=source.title,
+        api_key=resolved.apiKey or None,
+        base_url=resolved.baseUrl or None,
+    )
+    try:
+        job_id = service.start_ingest(job_request)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    by_job: dict[str, IngestJobService] = request.app.state.ingest_services_by_job
+    by_job[job_id] = service
+    return IngestJobResponse(jobId=job_id)
 
 
 # -- Ingest ---------------------------------------------------------------

@@ -13,9 +13,12 @@ import {
   getQueries,
   getQueryPage,
   getSettings,
+  getSources,
   getTranslationsManifest,
+  postBuildWiki,
   postIngest,
   postQuery,
+  postRegister,
   postTranslate,
   putSettings,
 } from "@/lib/api";
@@ -338,6 +341,71 @@ describe("api client", () => {
     const call = vi.mocked(globalThis.fetch).mock.calls[0];
     expect(call).toBeDefined();
     const [, init] = call!;
+    expect(init?.method).toBe("POST");
+  });
+
+  it("gets /sources for a workspace", async () => {
+    const sources = [
+      {
+        slug: "alpha",
+        title: "Alpha",
+        kind: "pdf",
+        sourcePath: "raw/_processed/alpha.pdf",
+        ingestedAt: "2026-06-14T00:00:00Z",
+        pageCount: 3,
+        wikiBuilt: false,
+        translated: true,
+      },
+    ];
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(sources), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const result = await getSources("/tmp/ws");
+    expect(result).toEqual(sources);
+    const [url] = vi.mocked(globalThis.fetch).mock.calls[0]!;
+    const urlText = typeof url === "string" ? url : url instanceof URL ? url.toString() : "";
+    expect(urlText).toContain("/sources?workspacePath=");
+  });
+
+  it("posts /sources/register (no model) and returns the jobId", async () => {
+    const jobResponse = { jobId: "register-job-1" };
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(jobResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const result = await postRegister({
+      workspacePath: "/tmp/ws",
+      filePath: "/tmp/paper.pdf",
+    });
+    expect(result).toEqual(jobResponse);
+    const [url, init] = vi.mocked(globalThis.fetch).mock.calls[0]!;
+    const urlText = typeof url === "string" ? url : url instanceof URL ? url.toString() : "";
+    expect(urlText).toContain("/sources/register");
+    expect(init?.method).toBe("POST");
+    const body = JSON.parse(
+      typeof init?.body === "string" ? init.body : "{}",
+    ) as Record<string, unknown>;
+    expect(body).not.toHaveProperty("model");
+  });
+
+  it("posts /sources/{slug}/build", async () => {
+    const jobResponse = { jobId: "build-job-1" };
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(jobResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const result = await postBuildWiki("alpha-aaa", { workspacePath: "/tmp/ws" });
+    expect(result).toEqual(jobResponse);
+    const [url, init] = vi.mocked(globalThis.fetch).mock.calls[0]!;
+    const urlText = typeof url === "string" ? url : url instanceof URL ? url.toString() : "";
+    expect(urlText).toContain("/sources/alpha-aaa/build");
     expect(init?.method).toBe("POST");
   });
 

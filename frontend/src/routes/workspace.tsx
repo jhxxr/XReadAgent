@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { BookOpenIcon, FileQuestionIcon, LightbulbIcon, PaperclipIcon } from "lucide-react";
+import { BookOpenIcon, FileQuestionIcon, FilesIcon, LightbulbIcon, PaperclipIcon } from "lucide-react";
 import * as React from "react";
 
 import { ThemeToggle } from "@/components/shell/theme-toggle";
+import { DocumentsTab } from "@/components/workspace/documents-tab";
 import { WorkspaceDropZone } from "@/components/workspace/workspace-drop-zone";
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -229,7 +230,7 @@ export function WorkspaceRoute() {
   // The header TabsList and the content TabsContent live in two separate
   // Radix Tabs roots (the trigger row sits inside the <header> bar). Share
   // one controlled value so clicking a header trigger switches the content.
-  const [tab, setTab] = React.useState("papers");
+  const [tab, setTab] = React.useState("documents");
 
   const handleDropFiles = (files: File[]) => {
     void importDroppedFiles(files);
@@ -261,6 +262,10 @@ export function WorkspaceRoute() {
         </div>
         <Tabs value={tab} onValueChange={setTab} className="ml-6 hidden sm:block">
           <TabsList>
+            <TabsTrigger value="documents" className="gap-1.5">
+              <FilesIcon className="size-3.5" />
+              Documents
+            </TabsTrigger>
             <TabsTrigger value="papers" className="gap-1.5">
               <BookOpenIcon className="size-3.5" />
               Papers
@@ -293,6 +298,9 @@ export function WorkspaceRoute() {
       </header>
 
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
+        <TabsContent value="documents" className="m-0 flex-1">
+          <DocumentsTab workspacePath={workspacePath} />
+        </TabsContent>
         <TabsContent value="papers" className="m-0 flex-1">
           <PapersTab workspacePath={workspacePath} />
         </TabsContent>

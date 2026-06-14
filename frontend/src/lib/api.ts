@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type {
   AppSettings,
+  BuildWikiRequest,
+  CreateWorkspaceRequest,
+  CreateWorkspaceResponse,
   HealthzResponse,
   IngestRequest,
   IngestJobResponse,
@@ -11,6 +14,8 @@ import type {
   QuerySummary,
   QueryRequest,
   QueryResultResponse,
+  RegisterRequest,
+  SourceSummary,
   TestModelRequest,
   TestModelResponse,
   TranslateRequest,
@@ -200,6 +205,21 @@ export function buildJobEventsWsUrl(jobId: string): string {
   return `${getWsBase()}/ws/jobs/${encodeURIComponent(jobId)}`;
 }
 
+/**
+ * Seed the canonical layout at an (Electron-allocated) workspace path. The
+ * directory itself is created by the Electron registry; this endpoint writes
+ * the seed wiki files. Idempotent — `created: false` when already initialized.
+ */
+export async function createWorkspace(
+  req: CreateWorkspaceRequest,
+): Promise<CreateWorkspaceResponse> {
+  return request<CreateWorkspaceResponse>("/workspaces/create", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Wiki read API
 // ---------------------------------------------------------------------------
@@ -268,6 +288,39 @@ export async function getWikiOverview(workspacePath: string): Promise<{ content:
  */
 export async function postIngest(req: IngestRequest): Promise<IngestJobResponse> {
   return request<IngestJobResponse>("/ingest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Sources (registered documents) API
+// ---------------------------------------------------------------------------
+
+/** List registered documents (from `state/sources.json`) with derived status. */
+export async function getSources(workspacePath: string): Promise<SourceSummary[]> {
+  return request<SourceSummary[]>(`/sources?workspacePath=${encodeURIComponent(workspacePath)}`);
+}
+
+/**
+ * Register (convert-only) a document — no LLM, no model. Returns a `jobId`
+ * streamed over `/ws/jobs/{jobId}` (only the `converting` stage fires).
+ */
+export async function postRegister(req: RegisterRequest): Promise<IngestJobResponse> {
+  return request<IngestJobResponse>("/sources/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+/** Build the wiki page for an already-registered document, by slug. */
+export async function postBuildWiki(
+  slug: string,
+  req: BuildWikiRequest,
+): Promise<IngestJobResponse> {
+  return request<IngestJobResponse>(`/sources/${encodeURIComponent(slug)}/build`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),

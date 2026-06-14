@@ -77,6 +77,91 @@ def _canned() -> list[IngestEvent]:
     ]
 
 
+def test_post_register_starts_register_mode_job(tmp_path: Path) -> None:
+    pdf = _make_pdf(tmp_path)
+    stub = _StubIngestService(_canned())
+    client = TestClient(create_app(ingest_service=stub))  # type: ignore[arg-type]
+    response = client.post(
+        "/api/sources/register",
+        json={
+            "workspacePath": str(tmp_path),
+            "filePath": str(pdf),
+            "title": "Alpha Paper",
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {"jobId": _JOB_ID}
+    assert len(stub.requests) == 1
+    req = stub.requests[0]
+    assert req.mode == "register"
+    assert req.model == ""  # register needs no model
+    assert req.file_path == pdf
+    assert req.title == "Alpha Paper"
+
+
+def test_post_register_missing_file_is_422(tmp_path: Path) -> None:
+    stub = _StubIngestService(_canned())
+    client = TestClient(create_app(ingest_service=stub))  # type: ignore[arg-type]
+    response = client.post(
+        "/api/sources/register",
+        json={"workspacePath": str(tmp_path), "filePath": str(tmp_path / "nope.pdf")},
+    )
+    assert response.status_code == 422
+
+
+def test_post_build_wiki_resolves_archived_source(tmp_path: Path) -> None:
+    from xreadagent.schemas.sources import Source
+    from xreadagent.wiki.sources import SourcesIndex
+    from xreadagent.wiki.workspace import Workspace
+
+    workspace = Workspace.at(tmp_path / "ws")
+    workspace.init_empty("Build")
+    workspace.ensure_layout()
+    archived = workspace.raw_processed_dir / "alpha-aaa.pdf"
+    archived.write_bytes(b"%PDF-1.4\nfake")
+    sources = SourcesIndex.load(workspace)
+    sources.add_or_update(
+        Source(
+            id="alpha-aaa",
+            title="Alpha",
+            slug="alpha-aaa",
+            kind="pdf",
+            sourcePath="raw/_processed/alpha-aaa.pdf",
+            contentHash="h",
+            ingestedAt="2026-06-14T00:00:00Z",
+            extractPath="extracts/alpha-aaa.md",
+        )
+    )
+    sources.save()
+
+    stub = _StubIngestService(_canned())
+    client = TestClient(create_app(ingest_service=stub))  # type: ignore[arg-type]
+    response = client.post(
+        "/api/sources/alpha-aaa/build",
+        json={"workspacePath": str(workspace.root), "model": "anthropic:claude-fake"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {"jobId": _JOB_ID}
+    req = stub.requests[0]
+    assert req.mode == "wiki"
+    assert req.file_path == archived
+    assert req.title == "Alpha"
+
+
+def test_post_build_wiki_unknown_slug_is_404(tmp_path: Path) -> None:
+    from xreadagent.wiki.workspace import Workspace
+
+    workspace = Workspace.at(tmp_path / "ws")
+    workspace.init_empty("Build")
+    stub = _StubIngestService(_canned())
+    client = TestClient(create_app(ingest_service=stub))  # type: ignore[arg-type]
+    response = client.post(
+        "/api/sources/ghost/build",
+        json={"workspacePath": str(workspace.root), "model": "m"},
+    )
+    assert response.status_code == 404
+
+
 def test_post_ingest_returns_job_id(tmp_path: Path) -> None:
     pdf = _make_pdf(tmp_path)
     stub = _StubIngestService(_canned())

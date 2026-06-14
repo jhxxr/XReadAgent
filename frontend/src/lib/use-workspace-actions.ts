@@ -3,8 +3,9 @@ import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-quer
 import { toast } from "sonner";
 
 import { runIngestJob } from "@/lib/ingest-job";
+import { postRegister } from "@/lib/api";
 import { getElectronAPI, isElectron } from "@/lib/platform";
-import { useWorkspacePath, writeWorkspacePath } from "@/lib/workspace";
+import { useWorkspacePath } from "@/lib/workspace";
 import type { IngestStageName } from "@/types/api";
 
 function describeError(error: unknown): string {
@@ -62,9 +63,14 @@ export function useWorkspaceActions() {
         id: INGEST_TOAST_ID,
         description: "Starting the import job…",
       });
+      // Import is now a convert-only "register" — it does NOT spend LLM tokens.
+      // Building the wiki is an explicit per-document action (see the Documents
+      // list). This is the decoupling that lets a user import-then-translate
+      // without ever triggering wiki synthesis.
       return runIngestJob(
         { workspacePath, filePath },
         {
+          submit: (req) => postRegister({ workspacePath: req.workspacePath, filePath: req.filePath }),
           onStage: (stage) => {
             toast.loading("Importing document", {
               id: INGEST_TOAST_ID,
@@ -75,14 +81,13 @@ export function useWorkspaceActions() {
       );
     },
     onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ["sources"] });
       void queryClient.invalidateQueries({ queryKey: ["papers"] });
-      void queryClient.invalidateQueries({ queryKey: ["concepts"] });
-      void queryClient.invalidateQueries({ queryKey: ["queries"] });
       toast.success(`Imported ${result.title}`, {
         id: INGEST_TOAST_ID,
         description: result.cache_hit
-          ? "Already in the wiki — nothing changed."
-          : undefined,
+          ? "Already imported — nothing changed."
+          : "Registered. Translate or build its wiki from the Documents list.",
       });
     },
     onError: (error) => {
@@ -93,32 +98,16 @@ export function useWorkspaceActions() {
     },
   });
 
-  const pickWorkspace = async (): Promise<string | null> => {
-    if (!isElectron()) {
-      toast.error("Workspace picker is only available in the desktop app");
-      return null;
-    }
-
-    const api = getElectronAPI();
-    if (!api) return null;
-    const selectedPaths = await api.showOpenFolderDialog("Open Workspace");
-    const selectedPath = selectedPaths[0];
-    if (!selectedPath) return null;
-    writeWorkspacePath(selectedPath);
-    return selectedPath;
-  };
-
-  const selectWorkspace = async () => {
-    const selectedPath = await pickWorkspace();
-    if (!selectedPath) return;
-    toast.success("Workspace opened");
+  const pickWorkspace = (): boolean => {
+    if (workspacePath) return true;
+    toast.error("No workspace selected", {
+      description: "Create or open a workspace before importing a document.",
+    });
+    return false;
   };
 
   const importDocument = async () => {
-    const targetWorkspacePath = workspacePath || (await pickWorkspace());
-    if (!targetWorkspacePath) {
-      return;
-    }
+    if (!pickWorkspace()) return;
 
     if (!isElectron()) {
       toast.error("Import is only available in the desktop app");
@@ -130,7 +119,7 @@ export function useWorkspaceActions() {
     const selectedPaths = await api.showOpenFileDialog("Import Paper");
     const selectedPath = selectedPaths[0];
     if (!selectedPath) return;
-    ingestMutation.mutate({ workspacePath: targetWorkspacePath, filePath: selectedPath });
+    ingestMutation.mutate({ workspacePath, filePath: selectedPath });
   };
 
   /**
@@ -141,7 +130,7 @@ export function useWorkspaceActions() {
    * The ingest API handles one document per request, so only the first
    * supported file is imported; extra files are reported via toast.
    */
-  const importDroppedFiles = async (files: readonly File[]) => {
+  const importDroppedFiles = (files: readonly File[]) => {
     if (files.length === 0) return;
 
     // Imperative cross-instance check: `ingestMutation.isPending` is a
@@ -168,10 +157,7 @@ export function useWorkspaceActions() {
       return;
     }
 
-    const targetWorkspacePath = workspacePath || (await pickWorkspace());
-    if (!targetWorkspacePath) {
-      return;
-    }
+    if (!pickWorkspace()) return;
 
     const api = getElectronAPI();
     if (!api) return;
@@ -188,14 +174,13 @@ export function useWorkspaceActions() {
         description: "Documents are imported one at a time; drop the others again afterwards.",
       });
     }
-    ingestMutation.mutate({ workspacePath: targetWorkspacePath, filePath });
+    ingestMutation.mutate({ workspacePath, filePath });
   };
 
   return {
     importDocument,
     importDroppedFiles,
     isImporting: ingestsInFlight > 0,
-    selectWorkspace,
     workspacePath,
   };
 }

@@ -9,9 +9,11 @@ import {
   SettingsIcon,
   SparklesIcon,
 } from "lucide-react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { useWorkspaceActions } from "@/lib/use-workspace-actions";
+import { WorkspaceManagerDialog } from "@/components/workspace/workspace-manager-dialog";
+import { useWorkspaces } from "@/lib/use-workspaces";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
@@ -32,8 +34,10 @@ export function AppSidebar() {
   const { t } = useI18n();
   const router = useRouterState();
   const pathname = router.location.pathname;
-  const { selectWorkspace, workspacePath } = useWorkspaceActions();
-  const workspaceLabel = workspacePath.trim() || t("nav.defaultWorkspace");
+  const { workspaces, activeWorkspacePath } = useWorkspaces();
+  const [managerOpen, setManagerOpen] = useState(false);
+  const activeEntry = workspaces.find((w) => w.path === activeWorkspacePath);
+  const workspaceLabel = activeEntry?.name ?? t("nav.defaultWorkspace");
 
   return (
     <aside className="bg-sidebar text-sidebar-foreground border-sidebar-border flex h-full w-[260px] flex-col border-r">
@@ -49,21 +53,19 @@ export function AppSidebar() {
       <div className="px-3 py-3">
         <button
           type="button"
-          onClick={() => {
-            void selectWorkspace();
-          }}
+          onClick={() => setManagerOpen(true)}
           className={cn(
             "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm transition-colors",
           )}
           data-slot="workspace-switcher"
         >
-          <div className="flex flex-col">
+          <div className="flex min-w-0 flex-col">
             <span className="text-muted-foreground text-[0.7rem] uppercase tracking-wider">
               {t("nav.workspace")}
             </span>
             <span className="truncate font-medium">{workspaceLabel}</span>
           </div>
-          <ChevronDownIcon className="text-muted-foreground size-4" />
+          <ChevronDownIcon className="text-muted-foreground size-4 shrink-0" />
         </button>
       </div>
 
@@ -112,6 +114,8 @@ export function AppSidebar() {
           </Link>
         </Button>
       </div>
+
+      <WorkspaceManagerDialog open={managerOpen} onOpenChange={setManagerOpen} />
     </aside>
   );
 }

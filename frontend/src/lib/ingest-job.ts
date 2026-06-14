@@ -3,6 +3,7 @@ import { buildJobEventsWsUrl, postIngest } from "@/lib/api";
 import type {
   IngestFinishEvent,
   IngestJobEvent,
+  IngestJobResponse,
   IngestRequest,
   IngestStageName,
 } from "@/types/api";
@@ -16,11 +17,20 @@ export interface RunIngestJobOptions {
    * translate dialog exposes.
    */
   websocketFactory?: (url: string) => WebSocket;
+  /**
+   * The POST that starts the job and returns its `{ jobId }`. Defaults to
+   * `postIngest` (full convert + LLM wiki build). The register flow passes a
+   * convert-only submitter; the per-document "build wiki" flow passes a
+   * build-by-slug submitter. The WS streaming below is identical for all.
+   */
+  submit?: (req: IngestRequest) => Promise<IngestJobResponse>;
 }
 
 /**
- * Run an ingest end to end through the job API: `POST /api/ingest` to get a
- * `jobId`, then subscribe to `/ws/jobs/{jobId}` until the terminal event.
+ * Run a document job end to end: a POST to get a `jobId`, then subscribe to
+ * `/ws/jobs/{jobId}` until the terminal event. The POST is pluggable via
+ * `options.submit` (defaults to `postIngest`) so register / build-wiki reuse
+ * this same streaming machinery.
  *
  * Resolves with the `finish` event and rejects with an `Error` when the job
  * reports `error`, the socket fails, or the stream closes before a terminal
@@ -31,7 +41,8 @@ export async function runIngestJob(
   req: IngestRequest,
   options: RunIngestJobOptions = {},
 ): Promise<IngestFinishEvent> {
-  const { jobId } = await postIngest(req);
+  const submit = options.submit ?? postIngest;
+  const { jobId } = await submit(req);
   const factory = options.websocketFactory ?? ((url: string) => new WebSocket(url));
 
   return new Promise<IngestFinishEvent>((resolve, reject) => {

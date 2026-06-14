@@ -67,7 +67,7 @@ describe("buildApplicationMenu", () => {
     expect(labels).toContain("Help");
   });
 
-  it("File menu contains Open Workspace, Preferences, and Quit", () => {
+  it("File menu contains Preferences and Quit (no folder-picker entry)", () => {
     buildApplicationMenu(null);
 
     const fileMenu = capturedTemplate!.find((item) => item.label === "File");
@@ -75,19 +75,11 @@ describe("buildApplicationMenu", () => {
 
     const submenu = fileMenu!.submenu as Electron.MenuItemConstructorOptions[];
     const itemLabels = submenu.map((item) => item.label);
-    expect(itemLabels).toContain("Open Workspace");
+    // "Open Workspace" was removed — workspaces are managed in-app under the
+    // app data directory, never an arbitrary folder picked via native dialog.
+    expect(itemLabels).not.toContain("Open Workspace");
     expect(itemLabels).toContain("Preferences");
     expect(itemLabels).toContain("Quit");
-  });
-
-  it("File menu Open Workspace has CmdOrCtrl+O accelerator", () => {
-    buildApplicationMenu(null);
-
-    const fileMenu = capturedTemplate!.find((item) => item.label === "File");
-    const submenu = fileMenu!.submenu as Electron.MenuItemConstructorOptions[];
-    const openWorkspace = submenu.find((item) => item.label === "Open Workspace");
-    expect(openWorkspace).toBeDefined();
-    expect(openWorkspace!.accelerator).toBe("CmdOrCtrl+O");
   });
 
   it("File menu Preferences has CmdOrCtrl+, accelerator", () => {

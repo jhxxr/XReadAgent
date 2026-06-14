@@ -4,6 +4,10 @@
 
 XReadAgent stores user knowledge in a workspace directory, not a relational database. Treat the workspace layout as a public product contract because the renderer, CLI, MCP tools, and future users all rely on it.
 
+Workspaces are **app-managed**: the desktop app creates them under the Electron `userData` directory (`<userData>/workspaces/<slug>/`) and tracks them in a registry (`<userData>/workspaces.json`). Electron owns *where* a workspace lives (slug allocation, collision handling, directory lifecycle, registry); the backend `Workspace` stays the owner of the *layout inside* a root. There is no "open an arbitrary folder" path — wiki/translation artifacts must never land in Downloads or another unmanaged location.
+
+Workspace creation is seeded by the backend via `POST /api/workspaces/create` (`api/main.py`, `_create_workspace`), which runs `Workspace.init_empty` and mirrors the `xreadagent init` CLI semantics (idempotent; refuses a non-empty, non-workspace directory). It is the ONLY HTTP endpoint allowed to materialize a workspace.
+
 Canonical layout ownership:
 
 - `wiki/workspace.py`: `Workspace` object and path accessors.
@@ -30,11 +34,14 @@ Reference file: `backend/src/xreadagent/wiki/atomic.py`.
 Different workflows intentionally touch different workspace areas:
 
 - Conversion writes `extracts/`, archives raw input under `raw/_processed/`, updates `state/sources.json`, and appends a `convert` row to `wiki/log.md`.
-- Ingest writes synthesized wiki pages and state through the agent apply/write path.
+- **Register (decoupled import)** runs convert-only: it does the conversion + source-manifest write but NO LLM/wiki synthesis. See `agents/orchestrator.py::register_source` and the `mode="register"` branch of `api/ingest_jobs.py::_default_runner`. Triggered by `POST /api/sources/register` (no model required).
+- Ingest (build wiki) writes synthesized wiki pages and state through the agent apply/write path. Triggered by `POST /api/ingest` or, for an already-registered source by slug, `POST /api/sources/{slug}/build` (resolves the archived file from `state/sources.json` so the renderer never constructs a path). The convert step short-circuits on the cached content hash.
 - Query writes only `wiki/queries/{topic}/...` and `state/conversation-log.jsonl`; it must not mutate papers, concepts, index, or `wiki/log.md`.
 - Translation writes `translations/manifest.json`, translation PDFs, and conversation-log entries; it must not mutate wiki papers/concepts or sources.
 
-Reference files: `backend/src/xreadagent/pipeline/router.py`, `backend/src/xreadagent/agents/query_orchestrator.py`, `backend/src/xreadagent/translation/service.py`, `backend/tests/test_translation_service.py`.
+`GET /api/sources` lists registered documents from `state/sources.json` (NOT `wiki/papers/`) with derived per-document status: `wikiBuilt` (a `wiki/papers/{slug}.md` exists) and `translated` (a translation entry shares the source `contentHash`). Registered-but-unbuilt documents MUST appear here.
+
+Reference files: `backend/src/xreadagent/pipeline/router.py`, `backend/src/xreadagent/agents/orchestrator.py`, `backend/src/xreadagent/api/ingest_jobs.py`, `backend/src/xreadagent/api/wiki_router.py`, `backend/src/xreadagent/translation/service.py`, `backend/tests/test_translation_service.py`.
 
 ## Idempotency
 

@@ -26,6 +26,7 @@ vi.mock("@/lib/api", () => ({
   getSettings,
   postIngest,
   putSettings,
+  createWorkspace: vi.fn(),
 }));
 
 /** Re-install the matchMedia stub that afterEach/restoreAllMocks tears down. */
@@ -110,7 +111,6 @@ function installMockElectronAPI(): NonNullable<Window["electronAPI"]> {
     onSplashStatus: vi.fn(),
     onSplashError: vi.fn(),
     sendSplashRetry: vi.fn(),
-    showOpenFolderDialog: vi.fn().mockResolvedValue(["/tmp/ws"]),
     showOpenFileDialog: vi.fn().mockResolvedValue([]),
     getPathForFile: vi.fn(() => "/tmp/paper.pdf"),
     showNotification: vi.fn(),
@@ -128,6 +128,12 @@ function installMockElectronAPI(): NonNullable<Window["electronAPI"]> {
     onDeepLink: vi.fn(),
     onOpenWorkspace: vi.fn(),
     onMenuNavigate: vi.fn(),
+    listWorkspaces: vi.fn(() => Promise.resolve([])),
+    createWorkspace: vi.fn(),
+    renameWorkspace: vi.fn(),
+    deleteWorkspace: vi.fn(() => Promise.resolve()),
+    touchWorkspace: vi.fn(() => Promise.resolve()),
+    revealWorkspace: vi.fn(() => Promise.resolve()),
   };
   Object.defineProperty(window, "electronAPI", {
     configurable: true,
@@ -186,14 +192,14 @@ describe("AppSidebar", () => {
     expect(await screen.findByText("默认")).toBeInTheDocument();
   });
 
-  it("opens the native workspace picker from the switcher", async () => {
-    const api = installMockElectronAPI();
+  it("opens the workspace manager from the switcher", async () => {
+    installMockElectronAPI();
     const user = userEvent.setup();
     renderSidebar();
 
     await user.click(await screen.findByRole("button", { name: /工作区 默认/i }));
 
-    expect(api.showOpenFolderDialog).toHaveBeenCalledWith("Open Workspace");
-    expect(window.localStorage.getItem("xreadagent.workspacePath")).toBe("/tmp/ws");
+    // The managed workspace manager dialog opens (no native folder picker).
+    expect(await screen.findByPlaceholderText(/new workspace name/i)).toBeInTheDocument();
   });
 });

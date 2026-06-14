@@ -34,9 +34,19 @@ It intentionally does not serve `state` or `wiki` through the generic file endpo
 
 Reference file: `backend/src/xreadagent/api/main.py`.
 
+## Managed Workspace Directory
+
+Workspaces are app-managed, not arbitrary user folders. The Electron main process owns the data directory and registry:
+
+- Root: `<userData>/workspaces/<slug>/` (Electron `app.getPath("userData")`).
+- Registry: `<userData>/workspaces.json` (slug, display name, abs path, timestamps).
+- Lifecycle IPC: `workspace:list/create/rename/delete/touch/reveal` (`electron/src/workspaces.ts`, exposed via `electron/src/preload.ts`).
+
+Creation is a two-step orchestration owned by the renderer (`frontend/src/lib/use-workspaces.ts`): (1) Electron allocates the slugged directory + registry entry, (2) the backend seeds the layout via `POST /api/workspaces/create`. If step 2 fails, step 1 is rolled back. There is no native "open arbitrary folder" entry (removed from menu/tray); the in-app `WorkspaceManagerDialog` is the only switcher.
+
 ## Native File Selection
 
-Electron main process owns native file/folder dialogs. Renderer workflows call preload APIs through `frontend/src/lib/platform.ts` and action hooks.
+Electron main process owns native file dialogs. Renderer workflows call preload APIs through `frontend/src/lib/platform.ts` and action hooks. Only the **file** dialog (`show-open-file-dialog`, for picking a document to import) remains — the folder dialog was removed with the arbitrary-folder workspace model.
 
 Supported import suffixes are mirrored in two places:
 
@@ -44,6 +54,10 @@ Supported import suffixes are mirrored in two places:
 - Frontend drop-zone filtering in `frontend/src/lib/use-workspace-actions.ts`.
 
 Update both together.
+
+## Import Is Convert-Only
+
+Importing a document **registers** it (convert + archive + `state/sources.json`) but does NOT build the wiki — no LLM tokens are spent on import. The Documents list (`frontend/src/components/workspace/documents-tab.tsx`, backed by `GET /api/sources`) surfaces each registered document with status and two independent per-document actions: **Translate** (format-preserving) and **Build Wiki**. Keep import decoupled from wiki synthesis.
 
 ## Workspace Mutation Isolation
 

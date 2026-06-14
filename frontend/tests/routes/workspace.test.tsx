@@ -16,10 +16,11 @@ import { ThemeProvider } from "@/lib/theme";
 import { writeWorkspacePath } from "@/lib/workspace";
 import { WorkspaceRoute } from "@/routes/workspace";
 
-const { getConcepts, getPapers, getQueries, runIngestJob } = vi.hoisted(() => ({
+const { getConcepts, getPapers, getQueries, getSources, runIngestJob } = vi.hoisted(() => ({
   getConcepts: vi.fn(),
   getPapers: vi.fn(),
   getQueries: vi.fn(),
+  getSources: vi.fn(),
   runIngestJob: vi.fn(),
 }));
 
@@ -27,6 +28,7 @@ vi.mock("@/lib/api", () => ({
   getConcepts,
   getPapers,
   getQueries,
+  getSources,
 }));
 
 vi.mock("@/lib/ingest-job", () => ({ runIngestJob }));
@@ -113,6 +115,7 @@ describe("Workspace tabs", () => {
         archivedAt: "2026-06-02T00:00:00Z",
       },
     ]);
+    getSources.mockResolvedValue([]);
     runIngestJob.mockResolvedValue({
       type: "finish",
       slug: "paper",
@@ -124,16 +127,26 @@ describe("Workspace tabs", () => {
     });
   });
 
-  it("shows the papers list by default", async () => {
+  it("shows the documents tab by default", async () => {
     renderWorkspace();
+    expect(await screen.findByText(/no documents yet/i)).toBeInTheDocument();
+    expect(screen.queryByText("Alpha Paper")).not.toBeInTheDocument();
+  });
+
+  it("switches to the Papers tab when its header tab is clicked", async () => {
+    const user = userEvent.setup();
+    renderWorkspace();
+    await screen.findByText(/no documents yet/i);
+
+    await user.click(screen.getByRole("tab", { name: /papers/i }));
+
     expect(await screen.findByText("Alpha Paper")).toBeInTheDocument();
-    expect(screen.queryByText("Attention Mechanism")).not.toBeInTheDocument();
   });
 
   it("switches the content area when the Concepts header tab is clicked", async () => {
     const user = userEvent.setup();
     renderWorkspace();
-    await screen.findByText("Alpha Paper");
+    await screen.findByText(/no documents yet/i);
 
     await user.click(screen.getByRole("tab", { name: /concepts/i }));
 
@@ -144,7 +157,7 @@ describe("Workspace tabs", () => {
   it("switches the content area when the Queries header tab is clicked", async () => {
     const user = userEvent.setup();
     renderWorkspace();
-    await screen.findByText("Alpha Paper");
+    await screen.findByText(/no documents yet/i);
 
     await user.click(screen.getByRole("tab", { name: /queries/i }));
 
@@ -155,7 +168,7 @@ describe("Workspace tabs", () => {
   it("returns to the papers list when Papers is re-selected", async () => {
     const user = userEvent.setup();
     renderWorkspace();
-    await screen.findByText("Alpha Paper");
+    await screen.findByText(/no documents yet/i);
 
     await user.click(screen.getByRole("tab", { name: /concepts/i }));
     await screen.findByText("Attention Mechanism");

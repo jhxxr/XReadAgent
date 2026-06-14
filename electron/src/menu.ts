@@ -5,7 +5,7 @@
  * Constructs the menu bar (File / Edit / View / Help) and wires menu items
  * to IPC events that the renderer can listen for.
  */
-import { app, dialog, Menu } from "electron";
+import { app, Menu } from "electron";
 import type { BrowserWindow, MenuItemConstructorOptions } from "electron";
 
 // ---------------------------------------------------------------------------
@@ -26,12 +26,6 @@ export function buildApplicationMenu(
     {
       label: "File",
       submenu: [
-        {
-          label: "Open Workspace",
-          accelerator: "CmdOrCtrl+O",
-          click: () => handleOpenWorkspace(mainWindow),
-        },
-        { type: "separator" },
         {
           label: "Preferences",
           accelerator: "CmdOrCtrl+,",
@@ -93,28 +87,6 @@ export function buildApplicationMenu(
 // ---------------------------------------------------------------------------
 // Menu action handlers
 // ---------------------------------------------------------------------------
-
-/**
- * Open Workspace: shows a native folder dialog and sends the selected path
- * to the renderer via IPC.
- */
-function handleOpenWorkspace(mainWindow: BrowserWindow | null): void {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-
-  dialog
-    .showOpenDialog(mainWindow, {
-      title: "Open Workspace",
-      properties: ["openDirectory"],
-    })
-    .then((result) => {
-      if (result.canceled || result.filePaths.length === 0) return;
-      const workspacePath = result.filePaths[0]!;
-      mainWindow?.webContents.send("open-workspace", workspacePath);
-    })
-    .catch(() => {
-      // User cancelled or dialog error — silently ignore.
-    });
-}
 
 /**
  * Preferences: navigates the renderer to the Settings page.

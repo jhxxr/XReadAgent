@@ -278,5 +278,90 @@ def test_overview_returns_content(tmp_path: Path) -> None:
     assert "content" in body
 
 
+def test_sources_list_marks_built_paper(tmp_path: Path) -> None:
+    workspace = _seeded_workspace(tmp_path)
+    client = TestClient(create_app())
+    response = client.get("/api/sources", params={"workspacePath": str(workspace.root)})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert len(body) == 1
+    row = body[0]
+    assert row["slug"] == "attention-aaa"
+    # The seeded workspace has a paper page on disk → wikiBuilt, not translated.
+    assert row["wikiBuilt"] is True
+    assert row["translated"] is False
+
+
+def test_sources_list_includes_registered_but_unbuilt_source(tmp_path: Path) -> None:
+    workspace = Workspace.at(tmp_path / "ws")
+    workspace.init_empty("Decoupled")
+    workspace.ensure_layout()
+    # Register a source WITHOUT writing a wiki paper page (the decoupled-import
+    # state). It must still show up in the sources list.
+    sources = SourcesIndex.load(workspace)
+    sources.add_or_update(
+        Source(
+            id="lonely-bbb",
+            title="Unbuilt Doc",
+            slug="lonely-bbb",
+            kind="pdf",
+            sourcePath="raw/_processed/lonely-bbb.pdf",
+            contentHash="def456",
+            ingestedAt="2026-06-14T00:00:00Z",
+            extractPath="extracts/lonely-bbb.md",
+        )
+    )
+    sources.save()
+
+    client = TestClient(create_app())
+    response = client.get("/api/sources", params={"workspacePath": str(workspace.root)})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert [r["slug"] for r in body] == ["lonely-bbb"]
+    assert body[0]["wikiBuilt"] is False
+
+
+def test_sources_list_marks_translated(tmp_path: Path) -> None:
+    from xreadagent.translation.manifest import TranslationEntry, TranslationsIndex
+
+    workspace = Workspace.at(tmp_path / "ws")
+    workspace.init_empty("Translated")
+    workspace.ensure_layout()
+    sources = SourcesIndex.load(workspace)
+    sources.add_or_update(
+        Source(
+            id="trans-ccc",
+            title="Translated Doc",
+            slug="trans-ccc",
+            kind="pdf",
+            sourcePath="raw/_processed/trans-ccc.pdf",
+            contentHash="hash-ccc",
+            ingestedAt="2026-06-14T00:00:00Z",
+            extractPath="extracts/trans-ccc.md",
+        )
+    )
+    sources.save()
+    translations = TranslationsIndex.load(workspace)
+    translations.add(
+        TranslationEntry(
+            sourceSlug="trans-ccc",
+            sourceHash="hash-ccc",
+            targetLang="zh",
+            model="m",
+            dualPath="translations/trans-ccc.dual.pdf",
+            translatedAt="2026-06-14T00:00:00Z",
+            durationS=1.0,
+        )
+    )
+    translations.save()
+
+    client = TestClient(create_app())
+    response = client.get("/api/sources", params={"workspacePath": str(workspace.root)})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body[0]["translated"] is True
+    assert body[0]["wikiBuilt"] is False
+
+
 # Suppress accidental unused-import flake.
 _ = pytest

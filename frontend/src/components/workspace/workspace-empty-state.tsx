@@ -11,11 +11,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { WorkspaceManagerDialog } from "@/components/workspace/workspace-manager-dialog";
 import { useWorkspaceActions } from "@/lib/use-workspace-actions";
 
 export function WorkspaceEmptyState() {
   const [explainerOpen, setExplainerOpen] = useState(false);
-  const { importDocument, isImporting, selectWorkspace, workspacePath } = useWorkspaceActions();
+  const [managerOpen, setManagerOpen] = useState(false);
+  const { importDocument, isImporting, workspacePath } = useWorkspaceActions();
 
   return (
     <div className="flex h-full items-center justify-center px-6 py-12">
@@ -38,12 +40,10 @@ export function WorkspaceEmptyState() {
               <Button
                 size="lg"
                 className="gap-2"
-                onClick={() => {
-                  void selectWorkspace();
-                }}
+                onClick={() => setManagerOpen(true)}
               >
                 <FolderOpenIcon className="size-4" />
-                Open workspace
+                New workspace
               </Button>
             )}
             <Button
@@ -71,6 +71,8 @@ export function WorkspaceEmptyState() {
           </button>
         </CardContent>
       </Card>
+
+      <WorkspaceManagerDialog open={managerOpen} onOpenChange={setManagerOpen} />
 
       <Dialog open={explainerOpen} onOpenChange={setExplainerOpen}>
         <DialogContent>

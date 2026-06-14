@@ -93,6 +93,25 @@ class TranslateResponse(_Strict):
     jobId: str
 
 
+class CreateWorkspaceRequest(_Strict):
+    """Body of ``POST /api/workspaces/create`` — camelCase per the wire convention.
+
+    ``workspacePath`` is the absolute root the workspace should live at. Electron
+    owns *where* (e.g. ``<userData>/workspaces/<slug>``); the backend only seeds
+    the canonical layout there — mirrors the ``xreadagent init`` CLI command.
+    """
+
+    workspacePath: str
+    title: str = ""
+
+
+class CreateWorkspaceResponse(_Strict):
+    workspacePath: str
+    title: str
+    created: bool
+
+
+
 def create_app(
     *,
     lifespan: Lifespan | None = None,
@@ -152,6 +171,17 @@ def create_app(
     @app.get("/healthz")
     async def healthz() -> dict[str, Any]:
         return {"status": "ok", "version": _version()}
+
+    @app.post("/api/workspaces/create", response_model=CreateWorkspaceResponse)
+    async def create_workspace(req: CreateWorkspaceRequest) -> CreateWorkspaceResponse:
+        """Seed the canonical layout at ``workspacePath`` (mirrors ``xreadagent init``).
+
+        This is the ONLY endpoint allowed to materialize a workspace — the
+        read-only file/manifest endpoints intentionally refuse to auto-create
+        (see ``_open_workspace``). Idempotent: re-creating an already-initialized
+        workspace returns ``created=false`` instead of overwriting seed files.
+        """
+        return _create_workspace(req.workspacePath, req.title)
 
     @app.post("/api/translate", response_model=TranslateResponse)
     async def translate(req: TranslateRequest) -> TranslateResponse:
@@ -351,6 +381,55 @@ def _open_workspace(workspace_path: str) -> Workspace:
             detail=f"workspacePath is not an existing directory: {cleaned}",
         )
     return Workspace.at(candidate)
+
+
+def _create_workspace(workspace_path: str, title: str) -> CreateWorkspaceResponse:
+    """Seed a workspace at ``workspace_path``; mirror ``cli/init_cmd.py`` semantics.
+
+    - 400 if the path exists but is not a directory.
+    - 400 if the directory is non-empty and not already a workspace (refuse to
+      scribble seed files into an unrelated folder).
+    - Idempotent: an already-initialized workspace returns ``created=false``.
+    """
+    cleaned = (workspace_path or "").strip()
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="workspacePath is required")
+    try:
+        candidate = Path(cleaned)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"invalid workspacePath: {exc}") from exc
+    if candidate.exists() and not candidate.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail=f"path exists but is not a directory: {cleaned}",
+        )
+
+    workspace = Workspace.at(candidate)
+    resolved_title = (title or candidate.name or "Workspace").strip() or "Workspace"
+
+    if workspace.is_initialized():
+        return CreateWorkspaceResponse(
+            workspacePath=str(workspace.root),
+            title=resolved_title,
+            created=False,
+        )
+
+    if candidate.exists() and candidate.is_dir() and any(candidate.iterdir()):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"refusing to create: {cleaned} is non-empty and lacks a wiki/index.md; "
+                "pick a fresh directory"
+            ),
+        )
+
+    workspace.ensure_layout()
+    workspace.init_empty(resolved_title)
+    return CreateWorkspaceResponse(
+        workspacePath=str(workspace.root),
+        title=resolved_title,
+        created=True,
+    )
 
 
 def _resolve_workspace_file(workspace: Workspace, relative: str) -> Path:

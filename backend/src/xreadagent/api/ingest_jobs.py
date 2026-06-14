@@ -84,11 +84,20 @@ IngestEvent = Union[IngestStageEvent, IngestFinishEvent, ErrorEvent]
 
 @dataclass(frozen=True)
 class IngestJobRequest:
-    """Inputs the service needs to start an ingest job."""
+    """Inputs the service needs to start an ingest job.
+
+    ``mode`` selects the pipeline depth:
+
+    - ``"register"`` — convert + record the source only (decoupled import); no
+      LLM call, so ``model`` / credentials may be empty.
+    - ``"wiki"`` — full ingest (convert + analyze + write wiki pages). Requires
+      a resolved ``model``.
+    """
 
     workspace_path: Path
     file_path: Path
     model: str
+    mode: Literal["register", "wiki"] = "wiki"
     title: str | None = None
     api_key: str | None = None
     base_url: str | None = None
@@ -119,6 +128,17 @@ async def _default_runner(
 ) -> IngestResult:
     # Imported lazily: the agent chain loads LangChain, which must never
     # happen on the sidecar startup path (see module docstring).
+    if request.mode == "register":
+        # Convert-only import — no LLM, no agent, no model required.
+        from xreadagent.agents.orchestrator import register_source
+
+        return register_source(
+            workspace,
+            request.file_path,
+            title=request.title,
+            on_phase=on_phase,
+        )
+
     from xreadagent.agents.ingest import IngestAgent
     from xreadagent.agents.orchestrator import ingest_source
 

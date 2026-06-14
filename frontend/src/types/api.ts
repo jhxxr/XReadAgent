@@ -95,6 +95,44 @@ export interface TranslateResponse {
   jobId: string;
 }
 
+/** Body of `POST /api/workspaces/create`. Mirrors backend `CreateWorkspaceRequest`. */
+export interface CreateWorkspaceRequest {
+  workspacePath: string;
+  title?: string;
+}
+
+/** Response of `POST /api/workspaces/create`. */
+export interface CreateWorkspaceResponse {
+  workspacePath: string;
+  title: string;
+  created: boolean;
+}
+
+/** One registered document with derived status. Mirrors `SourceSummaryResponse`. */
+export interface SourceSummary {
+  slug: string;
+  title: string;
+  kind: string;
+  sourcePath: string | null;
+  ingestedAt: string;
+  pageCount: number | null;
+  wikiBuilt: boolean;
+  translated: boolean;
+}
+
+/** Body of `POST /api/sources/register` (convert-only import; no model). */
+export interface RegisterRequest {
+  workspacePath: string;
+  filePath: string;
+  title?: string;
+}
+
+/** Body of `POST /api/sources/{slug}/build`. */
+export interface BuildWikiRequest {
+  workspacePath: string;
+  model?: string;
+}
+
 /**
  * BabelDOC's 13-stage pipeline collapsed onto stable protocol tokens.
  * Mirrors `StageName` in `backend/src/xreadagent/translation/events.py`.
